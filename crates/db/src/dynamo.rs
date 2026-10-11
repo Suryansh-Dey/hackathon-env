@@ -243,6 +243,35 @@ impl Store for DynamoStore {
         Ok(Page { items: out.items().iter().map(attrs_to_item).collect(), cursor })
     }
 
+    async fn increment(&self, table: Table, pk: &str, sk: &str, attr: &str, by: i64, ttl: Option<i64>) -> DbResult<i64> {
+        let mut e = Expr::default();
+        let n = e.name(attr);
+        let v = e.value(AttributeValue::N(by.to_string()));
+        let mut update = format!("ADD {n} {v}");
+        if let Some(t) = ttl {
+            let tn = e.name("ttl");
+            let tv = e.value(AttributeValue::N(t.to_string()));
+            update = format!("{update} SET {tn} = {tv}");
+        }
+        let out = self
+            .client
+            .update_item()
+            .table_name(self.table(table))
+            .set_key(Some(key(pk, sk)))
+            .update_expression(update)
+            .set_expression_attribute_names(e.names())
+            .set_expression_attribute_values(e.values())
+            .return_values(aws_sdk_dynamodb::types::ReturnValue::UpdatedNew)
+            .send()
+            .await
+            .map_err(|e| backend(e.into_service_error()))?;
+        out.attributes()
+            .and_then(|a| a.get(attr))
+            .map(from_attr)
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| DbError::Backend("increment returned no value".into()))
+    }
+
     async fn transact(&self, ops: Vec<TxOp>) -> DbResult<()> {
         if ops.len() > 100 {
             return Err(DbError::TooManyOps(ops.len()));

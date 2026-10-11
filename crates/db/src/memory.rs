@@ -150,6 +150,31 @@ impl Store for MemoryStore {
         Ok(Page { items: rows.into_iter().map(|r| r.3.clone()).collect(), cursor })
     }
 
+    async fn increment(&self, table: Table, pk: &str, sk: &str, attr: &str, by: i64, ttl: Option<i64>) -> DbResult<i64> {
+        let now = now_secs();
+        let (value, change) = {
+            let mut st = self.state.lock().unwrap();
+            let t = st.tables.entry(table).or_default();
+            let key = (pk.to_owned(), sk.to_owned());
+            let old = t.get(&key).filter(|i| !expired(i, now)).cloned();
+            let mut item = old.clone().unwrap_or_else(|| {
+                let mut m = Item::new();
+                m.insert("PK".into(), pk.into());
+                m.insert("SK".into(), sk.into());
+                m
+            });
+            let v = item.get(attr).and_then(Value::as_i64).unwrap_or(0) + by;
+            item.insert(attr.into(), v.into());
+            if let Some(t) = ttl {
+                item.insert("ttl".into(), t.into());
+            }
+            t.insert(key, item.clone());
+            (v, Change { table, old, new: Some(item) })
+        };
+        self.emit(vec![change]);
+        Ok(value)
+    }
+
     async fn transact(&self, ops: Vec<TxOp>) -> DbResult<()> {
         if ops.len() > 100 {
             return Err(DbError::TooManyOps(ops.len()));

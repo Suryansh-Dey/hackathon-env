@@ -97,6 +97,10 @@ pub async fn run(store: &dyn Store, ns: &str) {
     store.batch_write(Table::Core, vec![], dels).await.unwrap();
     assert!(store.query_all(Query::new(Table::Core, pk("B"))).await.unwrap().is_empty());
 
+    // atomic counters
+    assert_eq!(store.increment(Table::Ephemeral, &pk("RL"), "RL", "n", 1, Some(4_102_444_800)).await.unwrap(), 1);
+    assert_eq!(store.increment(Table::Ephemeral, &pk("RL"), "RL", "n", 2, None).await.unwrap(), 3);
+
     // conditional delete
     assert!(store.delete(Table::Core, &pk("A"), "META", Some(Cond::version(1))).await.unwrap_err().is_conflict());
     store.delete(Table::Core, &pk("A"), "META", Some(Cond::version(2))).await.unwrap();

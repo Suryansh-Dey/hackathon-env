@@ -270,6 +270,10 @@ pub trait Store: Send + Sync {
     /// All-or-nothing write of up to 100 operations.
     async fn transact(&self, ops: Vec<TxOp>) -> DbResult<()>;
 
+    /// Atomically adds `by` to a numeric attribute (creating the item if
+    /// needed), sets `ttl` when given, and returns the new value.
+    async fn increment(&self, table: Table, pk: &str, sk: &str, attr: &str, by: i64, ttl: Option<i64>) -> DbResult<i64>;
+
     /// Batch get (≤ 100 keys); missing items are skipped.
     async fn batch_get(&self, table: Table, keys: &[(String, String)]) -> DbResult<Vec<Item>> {
         let mut out = Vec::with_capacity(keys.len());

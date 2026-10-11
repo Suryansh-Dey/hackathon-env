@@ -1651,11 +1651,13 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "kabados-domain",
+ "schemars 1.2.2",
  "serde",
  "serde_json",
  "thiserror",
  "tokio",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]

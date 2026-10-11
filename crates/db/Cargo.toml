@@ -17,6 +17,8 @@ async-trait.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 base64.workspace = true
+schemars.workspace = true
+utoipa.workspace = true
 aws-sdk-dynamodb.workspace = true
 aws-smithy-runtime-api.workspace = true
 
