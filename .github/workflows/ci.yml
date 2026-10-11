@@ -1,0 +1,139 @@
+# KabadOS CI: every push and pull request runs the checks for the areas it
+# touches (PLAN.md §21.3, §22.4). A manual run executes everything.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  AI_MODE: mock
+  KABADOS_ENV: ci
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' }}
+      infra: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'crates/**'
+              - 'apps/transporter/**'
+              - 'policies/**'
+              - 'evals/**'
+              - 'copy/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.cargo/**'
+              - 'rustfmt.toml'
+              - '.github/workflows/ci.yml'
+            infra:
+              - 'infra/**'
+              - 'policies/**'
+              - '.github/workflows/ci.yml'
+
+  rust-lint:
+    name: Rust fmt + clippy
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-x86
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  rust-test:
+    name: Rust tests (unit, property, policy, DynamoDB Local)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-x86
+      - name: Unit, property and policy tests
+        run: cargo test --workspace --locked
+      - name: Integration tests (DynamoDB Local; live_* tests need real credentials and are skipped)
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          AWS_ACCESS_KEY_ID: local
+          AWS_SECRET_ACCESS_KEY: local
+          AWS_REGION: ap-south-1
+        run: cargo test --workspace --locked -- --ignored --skip live_
+
+  lambda-build:
+    name: Lambda build (arm64)
+    needs: [rust-lint, rust-test]
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - id: bins
+        name: Find Lambda binaries
+        run: |
+          if compgen -G "crates/*/src/bin/*.rs" > /dev/null; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.bins.outputs.present == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.bins.outputs.present == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-arm64-release
+      - if: steps.bins.outputs.present == 'true'
+        run: pip install --quiet cargo-lambda
+      - if: steps.bins.outputs.present == 'true'
+        run: cargo lambda build --release --arm64 --locked --workspace --lambda-dir target/lambda
+      - if: steps.bins.outputs.present == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lambda-arm64
+          path: target/lambda
+          retention-days: 7
+
+  infra:
+    name: Infra (tsc, vitest, cdk synth)
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npx cdk synth --quiet -c env=dev
