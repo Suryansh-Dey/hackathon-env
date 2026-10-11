@@ -202,8 +202,9 @@ export default function DealDetail() {
       {modeB && status === 'SELLER_CONFIRMED' ? (
         <Card title="Confirm you were paid">
           <p className="kb-muted">
-            {d.deal.direct_payment_marked_at ? 'The vendor marked this as paid. ' : 'Once the vendor pays you directly, '}
-            confirm here to get your handover code.
+            {d.deal.direct_payment_marked_at
+              ? 'The vendor marked this as paid. Confirm here to get your handover code.'
+              : 'Once the vendor pays you directly, confirm here to get your handover code.'}
           </p>
           <Button onClick={() => action.mutate('confirm-received')} disabled={action.isPending}>{action.isPending ? 'Confirming…' : 'I received payment'}</Button>
         </Card>

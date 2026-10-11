@@ -299,7 +299,7 @@ export default function DealDetail() {
         {canHandover ? (
           <>
             <Field label="Handover OTP (from seller)">
-              <input className="kb-input" value={otp} onChange={(e) => setOtp(e.target.value)} inputMode="numeric" placeholder="6-digit code" style={{ maxWidth: 200 }} />
+              <input className="kb-input" value={otp} onChange={(e) => setOtp(e.target.value)} inputMode="numeric" placeholder="4-digit code" style={{ maxWidth: 200 }} />
             </Field>
             <Button disabled={action.isPending || !otp.trim()} onClick={() => action.mutate({ name: 'handover', body: { otp: otp.trim() } })}>Confirm handover</Button>
           </>
