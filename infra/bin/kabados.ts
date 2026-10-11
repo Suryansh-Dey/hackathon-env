@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { App } from 'aws-cdk-lib';
 import { envFromContext, prefix } from '../lib/config.js';
+import { AsyncStack } from '../lib/async-stack.js';
 import { DataStack } from '../lib/data-stack.js';
 import { GithubOidcStack } from '../lib/github-oidc-stack.js';
 
@@ -19,6 +20,12 @@ new DataStack(app, `${prefix(config)}-data`, {
   env,
   config,
   description: 'KabadOS: DynamoDB tables and S3 buckets (PLAN.md §16)',
+});
+
+new AsyncStack(app, `${prefix(config)}-async`, {
+  env,
+  config,
+  description: 'KabadOS: EventBridge bus, SQS work queues, Scheduler (PLAN.md §17.3)',
 });
 
 app.synth();
