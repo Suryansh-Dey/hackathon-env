@@ -191,8 +191,61 @@ pub fn extract_json(text: &str) -> &str {
     }
 }
 
+/// Longest numeric literal accepted from a model; longer ones are runaway digits.
+pub const MAX_NUMBER_CHARS: usize = 24;
+
+/// Replaces runaway numeric literals (outside strings) with `null`. Constrained
+/// decoding occasionally loops on digits; optional fields then degrade to null
+/// and required ones trigger the normal repair retry.
+pub fn neutralize_runaway_numbers(json: &str) -> std::borrow::Cow<'_, str> {
+    let b = json.as_bytes();
+    let mut out: Option<String> = None;
+    let (mut i, mut last, mut in_str, mut esc) = (0, 0, false, false);
+    while i < b.len() {
+        let c = b[i];
+        if in_str {
+            match (esc, c) {
+                (true, _) => esc = false,
+                (false, b'\\') => esc = true,
+                (false, b'"') => in_str = false,
+                _ => {}
+            }
+            i += 1;
+            continue;
+        }
+        if c == b'"' {
+            in_str = true;
+            i += 1;
+            continue;
+        }
+        if c == b'-' || c.is_ascii_digit() {
+            let start = i;
+            i += 1;
+            while i < b.len() && (b[i].is_ascii_digit() || matches!(b[i], b'.' | b'e' | b'E' | b'+' | b'-')) {
+                i += 1;
+            }
+            if i - start > MAX_NUMBER_CHARS {
+                let o = out.get_or_insert_with(String::new);
+                o.push_str(&json[last..start]);
+                o.push_str("null");
+                last = i;
+            }
+            continue;
+        }
+        i += 1;
+    }
+    match out {
+        Some(mut o) => {
+            o.push_str(&json[last..]);
+            std::borrow::Cow::Owned(o)
+        }
+        None => std::borrow::Cow::Borrowed(json),
+    }
+}
+
 fn parse_and_validate<T: DeserializeOwned>(text: &str, validate: Validator<'_, T>) -> Result<T, String> {
-    let v: T = serde_json::from_str(extract_json(text)).map_err(|e| format!("response is not valid JSON for the schema: {e}"))?;
+    let json = neutralize_runaway_numbers(extract_json(text));
+    let v: T = serde_json::from_str(&json).map_err(|e| format!("response is not valid JSON for the schema: {e}"))?;
     validate(&v)?;
     Ok(v)
 }

@@ -249,6 +249,47 @@ async fn pro_timeouts_fall_back_to_flash() {
 }
 
 #[test]
+fn runaway_numbers_become_null() {
+    let long = "9".repeat(4000);
+    let text = format!(r#"{{"a": {long}, "b": "keep {long}", "c": -12.5, "d": [1, {long}]}}"#);
+    let fixed = neutralize_runaway_numbers(&text);
+    let v: serde_json::Value = serde_json::from_str(&fixed).unwrap();
+    assert!(v["a"].is_null());
+    assert!(v["b"].as_str().unwrap().len() > 4000, "strings are untouched");
+    assert_eq!(v["c"], json!(-12.5));
+    assert_eq!(v["d"], json!([1, null]));
+    assert!(matches!(neutralize_runaway_numbers(r#"{"n": 3}"#), std::borrow::Cow::Borrowed(_)));
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Weights {
+    min_g: Option<i64>,
+    n: i64,
+}
+
+#[tokio::test]
+async fn runaway_optional_numbers_degrade_without_repair() {
+    let long = "1".repeat(3000);
+    let m = MockModel::new().with_json_sequence("t", vec![Ok(format!(r#"{{"min_g": {long}, "n": 4}}"#))]);
+    let ok = |_: &Weights| Ok(());
+    let out = rt(m)
+        .run_json(JsonTask {
+            agent: "t",
+            prompt_version: "t-1",
+            system: String::new(),
+            parts: vec![Part::text("x")],
+            schema: json!({}),
+            tier: ModelTier::Flash,
+            thinking: false,
+            validate: &ok,
+            cacheable: false,
+        })
+        .await
+        .unwrap();
+    assert_eq!((out.value.min_g, out.value.n, out.attempts), (None, 4, 1));
+}
+
+#[test]
 fn extract_json_handles_fences_and_prose() {
     assert_eq!(extract_json("```json\n{\"a\":1}\n```"), "{\"a\":1}");
     assert_eq!(extract_json("Here you go: {\"a\":1} thanks"), "{\"a\":1}");
