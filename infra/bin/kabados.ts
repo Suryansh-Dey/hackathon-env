@@ -2,6 +2,7 @@
 import { App } from 'aws-cdk-lib';
 import { envFromContext, prefix } from '../lib/config.js';
 import { AsyncStack } from '../lib/async-stack.js';
+import { WebStack } from '../lib/web-stack.js';
 import { DataStack } from '../lib/data-stack.js';
 import { GithubOidcStack } from '../lib/github-oidc-stack.js';
 
@@ -26,6 +27,12 @@ new AsyncStack(app, `${prefix(config)}-async`, {
   env,
   config,
   description: 'KabadOS: EventBridge bus, SQS work queues, Scheduler (PLAN.md §17.3)',
+});
+
+new WebStack(app, `${prefix(config)}-web`, {
+  env,
+  config,
+  description: 'KabadOS: static hosting for the client apps (S3 + CloudFront)',
 });
 
 app.synth();
