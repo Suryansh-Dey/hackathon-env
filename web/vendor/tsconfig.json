@@ -1,0 +1,6 @@
+{
+  "extends": "@kabados/config/tsconfig.json",
+  "compilerOptions": { "baseUrl": "." },
+  "include": ["next-env.d.ts", "app/**/*.ts", "app/**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
