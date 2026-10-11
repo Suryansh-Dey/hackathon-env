@@ -21,11 +21,27 @@ pub struct Budgets {
     pub max_tokens: u64,
     /// Wall-clock limit for the whole run, including retries.
     pub timeout: Duration,
+    /// Limit per model call; a hung call is retried instead of eating the run budget.
+    pub call_timeout: Duration,
 }
 
 impl Default for Budgets {
     fn default() -> Self {
-        Self { max_steps: 12, max_tokens: 400_000, timeout: Duration::from_secs(120) }
+        Self { max_steps: 12, max_tokens: 400_000, timeout: Duration::from_secs(120), call_timeout: Duration::from_secs(60) }
+    }
+}
+
+impl Budgets {
+    /// Defaults overridden by `AI_MAX_STEPS`, `AI_MAX_TOKENS`, `AI_TIMEOUT_SECS`, `AI_CALL_TIMEOUT_SECS`.
+    pub fn from_env() -> Self {
+        let d = Self::default();
+        let num = |k: &str| std::env::var(k).ok().and_then(|v| v.trim().parse::<u64>().ok());
+        Self {
+            max_steps: num("AI_MAX_STEPS").map(|v| v as u32).unwrap_or(d.max_steps),
+            max_tokens: num("AI_MAX_TOKENS").unwrap_or(d.max_tokens),
+            timeout: num("AI_TIMEOUT_SECS").map(Duration::from_secs).unwrap_or(d.timeout),
+            call_timeout: num("AI_CALL_TIMEOUT_SECS").map(Duration::from_secs).unwrap_or(d.call_timeout),
+        }
     }
 }
 
@@ -181,7 +197,7 @@ fn truncate(s: &str, n: usize) -> &str {
 
 impl AgentRuntime {
     pub fn new(client: Arc<dyn ModelClient>, models: ModelConfig) -> Self {
-        Self { client, models, cache: Arc::new(InMemoryCache::default()), budgets: Budgets::default(), retry: RetryPolicy::default() }
+        Self { client, models, cache: Arc::new(InMemoryCache::default()), budgets: Budgets::from_env(), retry: RetryPolicy::default() }
     }
 
     /// `client_from_env()` + `ModelConfig::from_env()` + in-memory cache.
@@ -228,7 +244,11 @@ impl AgentRuntime {
         let mut retry = 0u32;
         loop {
             *attempts += 1;
-            match call().await {
+            let result = match tokio::time::timeout(self.budgets.call_timeout, call()).await {
+                Ok(r) => r,
+                Err(_) => Err(ModelError::Transport(format!("model call exceeded {:?}", self.budgets.call_timeout))),
+            };
+            match result {
                 Ok(r) => return Ok(r),
                 Err(e) if e.retryable() && retry < self.retry.max_retries => {
                     let d = self.retry.delay(retry);

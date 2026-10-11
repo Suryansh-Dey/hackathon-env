@@ -15,8 +15,8 @@ use serde_json::Value;
 use std::str::FromStr;
 use std::time::Duration;
 
-/// Per-request HTTP timeout; the runtime enforces the overall run budget.
-pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+/// HTTP safety net; the runtime's per-call timeout normally fires first.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub struct GeminiModel {
     api_key: String,

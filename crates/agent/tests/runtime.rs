@@ -182,6 +182,35 @@ async fn tool_loop_step_budget() {
     assert!(matches!(err, AgentError::Budget(_)));
 }
 
+struct Slow {
+    calls: AtomicU32,
+}
+
+#[async_trait]
+impl ModelClient for Slow {
+    fn provider(&self) -> &'static str {
+        "slow"
+    }
+    async fn generate_json(&self, _req: &JsonRequest) -> Result<ModelReply, ModelError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        }
+        Ok(ModelReply { text: r#"{"n": 1}"#.into(), model: "slow".into(), usage: None })
+    }
+    async fn tool_step(&self, _req: &ToolRequest, _t: &[Turn]) -> Result<ToolStepReply, ModelError> {
+        Err(ModelError::Empty)
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn hung_calls_are_retried_within_the_run_budget() {
+    let r = AgentRuntime::new(Arc::new(Slow { calls: AtomicU32::new(0) }), ModelConfig::default())
+        .with_budgets(Budgets { call_timeout: Duration::from_secs(5), timeout: Duration::from_secs(60), ..Budgets::default() })
+        .with_retry(RetryPolicy { max_retries: 2, base_delay: Duration::from_millis(1), max_delay: Duration::from_millis(1) });
+    let out = r.run_json(task(&no_check, false)).await.unwrap();
+    assert_eq!((out.value.n, out.attempts), (1, 2));
+}
+
 #[test]
 fn extract_json_handles_fences_and_prose() {
     assert_eq!(extract_json("```json\n{\"a\":1}\n```"), "{\"a\":1}");
