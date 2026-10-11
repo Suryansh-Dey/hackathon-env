@@ -1,0 +1,25 @@
+{
+  "name": "@kabados/infra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KabadOS AWS CDK app (PLAN.md §21.2)",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "synth": "cdk synth --quiet",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "aws-cdk": "^2.1145.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.273.0",
+    "cargo-lambda-cdk": "^0.0.36",
+    "constructs": "^10.8.1"
+  }
+}

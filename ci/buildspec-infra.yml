@@ -1,0 +1,20 @@
+# Infra CI: type-check, unit-test and synthesize the CDK app.
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+    commands:
+      - cd infra && npm ci
+  build:
+    commands:
+      - npm run build
+      - npm test
+      - npx cdk synth --quiet -c env=dev
+artifacts:
+  base-directory: infra/cdk.out
+  files:
+    - "**/*"
+cache:
+  paths:
+    - /root/.npm/**/*
