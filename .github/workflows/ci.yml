@@ -1,5 +1,6 @@
-# KabadOS CI: every push and pull request runs the checks for the areas it
-# touches (PLAN.md §21.3, §22.4). A manual run executes everything.
+# KabadOS CI/CD: every push and pull request runs the checks for the areas it
+# touches (PLAN.md §21.3, §22.4). A manual run executes everything. A push to
+# main that passes deploys the dev environment and smoke-tests it.
 name: CI
 
 on:
@@ -7,9 +8,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Pull requests cancel superseded runs; pushes (main included) never cancel each other.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -27,6 +29,8 @@ jobs:
     outputs:
       backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' }}
       infra: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra == 'true' }}
+      web: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
+      transporter: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.transporter == 'true' }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -35,7 +39,6 @@ jobs:
           filters: |
             backend:
               - 'crates/**'
-              - 'apps/transporter/**'
               - 'policies/**'
               - 'evals/**'
               - 'copy/**'
@@ -47,6 +50,17 @@ jobs:
             infra:
               - 'infra/**'
               - 'policies/**'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'web/**'
+              - '.github/workflows/ci.yml'
+            transporter:
+              - 'apps/transporter/**'
+              - 'crates/client/**'
+              - 'crates/domain/**'
+              - 'crates/pricing/**'
+              - 'Cargo.toml'
+              - 'rustfmt.toml'
               - '.github/workflows/ci.yml'
 
   rust-lint:
@@ -136,4 +150,135 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - run: npx cdk synth --quiet -c env=dev
+      # Every stack is synthesized; Rust bundling (kabados-dev-compute) is left to
+      # lambda-build and deploy, so this check needs neither cargo-lambda nor Docker.
+      - run: npx cdk synth --quiet -c env=dev --exclusively kabados-dev-github-oidc kabados-dev-data kabados-dev-async kabados-dev-web
+
+  web:
+    name: Web (static export, typecheck, tests)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_PUBLIC_API_URL: https://example.invalid
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Static export of seller, vendor, ops and public
+        run: npm run build
+      # After the build: next build generates each app's next-env.d.ts and .next/types.
+      - name: Typecheck every app and package
+        run: npm run typecheck
+      - name: Tests (workspaces that define a test script)
+        run: npm test --workspaces --if-present
+
+  transporter:
+    name: Transporter app (fmt, clippy, tests)
+    needs: changes
+    if: needs.changes.outputs.transporter == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/transporter
+    steps:
+      - uses: actions/checkout@v7
+      - name: Dioxus desktop system libraries (WebKitGTK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libxdo-dev \
+            libayatana-appindicator3-dev librsvg2-dev libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/transporter -> target
+          shared-key: transporter
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+
+  # CD: a green push to main deploys dev with the OIDC role (no AWS keys), then
+  # smoke-tests the API and the seller site. CDK builds the arm64 Lambdas itself
+  # (cargo-lambda-cdk), so this does not wait for lambda-build.
+  deploy:
+    name: Deploy dev + smoke test
+    needs: [changes, rust-lint, rust-test, infra, web, transporter]
+    if: >-
+      !cancelled() && !failure() &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      (needs.changes.outputs.backend == 'true' || needs.changes.outputs.infra == 'true' || needs.changes.outputs.web == 'true')
+    runs-on: ubuntu-24.04-arm
+    # One deploy at a time; a running deploy is never cancelled.
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-arm64-release
+      - run: pip install --quiet cargo-lambda
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            infra/package-lock.json
+            web/package-lock.json
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 7200
+      - name: Install infra dependencies
+        working-directory: infra
+        run: npm ci
+      # The deploy role may only assume the CDK bootstrap roles, so stack outputs
+      # come from --outputs-file rather than aws cloudformation describe-stacks.
+      - name: Deploy data, async and compute (builds the arm64 Lambdas)
+        working-directory: infra
+        run: npx cdk deploy kabados-dev-data kabados-dev-async kabados-dev-compute -c env=dev --require-approval never --outputs-file "$RUNNER_TEMP/backend-outputs.json"
+      - name: Read the API URL
+        id: api
+        run: |
+          url=$(jq -r '."kabados-dev-compute".ApiUrl // empty' "$RUNNER_TEMP/backend-outputs.json")
+          test -n "$url" || { echo "::error::ApiUrl missing from kabados-dev-compute outputs"; exit 1; }
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Build the four static sites against the deployed API
+        working-directory: web
+        env:
+          NEXT_PUBLIC_API_URL: ${{ steps.api.outputs.url }}
+        run: |
+          npm ci
+          npm run build
+      - name: Deploy the static sites (S3 + CloudFront)
+        working-directory: infra
+        run: npx cdk deploy kabados-dev-web --exclusively -c env=dev --require-approval never --outputs-file "$RUNNER_TEMP/web-outputs.json"
+      - name: Smoke test
+        env:
+          API_URL: ${{ steps.api.outputs.url }}
+        run: |
+          seller=$(jq -r '."kabados-dev-web".sellerUrl // empty' "$RUNNER_TEMP/web-outputs.json")
+          test -n "$seller" || { echo "::error::sellerUrl missing from kabados-dev-web outputs"; exit 1; }
+          curl -fsS --retry 5 --retry-delay 10 --retry-all-errors "$API_URL/v1/public/config"
+          echo
+          page=$(curl -fsS --retry 5 --retry-delay 10 --retry-all-errors "$seller/signin/")
+          grep -q "Mobile number" <<<"$page" || { echo "::error::$seller/signin/ is not the sign-in page"; exit 1; }
+          echo "API $API_URL and seller site $seller are up"

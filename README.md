@@ -95,6 +95,14 @@ Secrets live in AWS Secrets Manager under `/kabados/<env>/…` (Gemini key,
 Razorpay test keys). GitHub Actions deploys via an OIDC role
 (`kabados-dev-github-deploy`); no long-lived AWS keys.
 
+**CI/CD** (`.github/workflows/ci.yml`): every push and PR runs the checks for
+what it touched — Rust fmt/clippy/tests (+ DynamoDB Local) and the arm64 Lambda
+build, infra tsc/vitest/`cdk synth`, the four web apps' static export and
+typecheck, and the transporter app's fmt/clippy/tests. A green push to `main`
+then runs the steps above automatically (role and region come from the repo
+variables `AWS_DEPLOY_ROLE_ARN` / `AWS_REGION`) and smoke-tests
+`/v1/public/config` and the seller sign-in page.
+
 ## Provider modes
 
 Each integration runs in `mock`, `sandbox` or `live` mode (AWS AppConfig / env).
