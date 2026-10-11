@@ -266,6 +266,25 @@ pub async fn offer_action(
             if offer.data.listing_version != bundle.listing.data.current_version {
                 return Err(ApiError::conflict("the listing changed after this offer; ask the vendor to update it"));
             }
+            // Re-check at acceptance: items or the vendor's authorization may have changed since the offer.
+            let tax = st.taxonomy().await?;
+            if bundle.items.iter().any(|i| i.data.hazard.is_hazardous || tax.is_hazardous(&i.data.category_id)) {
+                let ok = st.db.vendor(&offer.data.vendor_id).await?.is_some_and(|v| v.data.hazardous_auth_valid(now()));
+                if !ok {
+                    return Err(ApiError::forbidden("this vendor isn't authorized for the hazardous items in your lot"));
+                }
+            }
+            if offer.data.payment_mode == PaymentMode::Platform {
+                let has_upi = st
+                    .db
+                    .payout_methods(me.id())
+                    .await?
+                    .iter()
+                    .any(|p| p.data.validation == kabados_domain::user::PayoutValidation::Validated);
+                if !has_upi {
+                    return Err(ApiError::conflict("Add a UPI ID in your account before accepting an offer paid through KabadOS"));
+                }
+            }
             let d = accept(&st, &mut bundle.listing, &mut offer, req.slot).await?;
             Ok(Json(serde_json::json!({"deal_id": d})))
         }
@@ -343,6 +362,7 @@ pub async fn accept(
         transporter_fare: None,
         platform_fee: fee,
         payment_order_id: None,
+        payment_order_amount: None,
         direct_payment_marked_at: None,
         handover_otp_hash: None,
         handover_at: None,

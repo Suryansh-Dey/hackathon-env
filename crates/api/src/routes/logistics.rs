@@ -518,11 +518,37 @@ pub async fn job_event(State(st): State<AppState>, me: Me, Path(id): Path<String
         note: b.note.map(|n| n.chars().take(300).collect()),
         mock_location: b.mock_location,
     };
+    // Goods move only through the OTP handover, and delivery is the vendor's
+    // confirmation, so the driver can't skip weighing, payment or the code.
+    match b.kind {
+        JobEventKind::Loaded | JobEventKind::Delivered => {
+            return Err(ApiError::conflict("loading happens with the seller's handover code; delivery is confirmed by the vendor"));
+        }
+        JobEventKind::InTransit | JobEventKind::ArrivedYard if deal.data.status != DealStatus::HandedOver => {
+            return Err(ApiError::conflict("collect the goods with the seller's handover code first"));
+        }
+        _ => {}
+    }
     let mut extra = vec![st.db.job_event_op(&deal.data.id, &job.data.id, &event)?];
     let mut events = vec![];
     let mut notes = vec![];
     if b.kind == JobEventKind::FareChanged {
         let to = b.fare.ok_or_else(|| ApiError::bad("fare is required"))?;
+        if to.0 < 0 || to.0 > 5_000_000 {
+            return Err(ApiError::bad("fare must be between ₹0 and ₹50,000"));
+        }
+        // Money is locked once the seller confirms the weights.
+        if !matches!(
+            deal.data.status,
+            DealStatus::Created
+                | DealStatus::PickupScheduled
+                | DealStatus::JobAssigned
+                | DealStatus::AtPickup
+                | DealStatus::Weighed
+                | DealStatus::LineRegraded
+        ) {
+            return Err(ApiError::conflict("the fare can't change after the seller confirms the weights"));
+        }
         job.data.fare_history.push(kabados_domain::job::FareChange {
             from: job.data.fare,
             to,

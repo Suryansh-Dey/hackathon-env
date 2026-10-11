@@ -133,6 +133,7 @@ fn deal_from(l: &Listing, o: &Offer) -> Deal {
         transporter_fare: None,
         platform_fee: Paise(0),
         payment_order_id: None,
+        payment_order_amount: None,
         direct_payment_marked_at: None,
         handover_otp_hash: None,
         handover_at: None,

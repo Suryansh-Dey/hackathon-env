@@ -189,6 +189,9 @@ pub struct Deal {
     pub transporter_fare: Option<Paise>,
     pub platform_fee: Paise,
     pub payment_order_id: Option<String>,
+    /// Amount of `payment_order_id`; a capture must match it exactly.
+    #[serde(default)]
+    pub payment_order_amount: Option<Paise>,
     pub direct_payment_marked_at: Option<DateTime<Utc>>,
     /// Keyed hash of the handover OTP; the plain code is shown only to the seller.
     pub handover_otp_hash: Option<String>,

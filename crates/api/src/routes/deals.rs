@@ -116,8 +116,11 @@ pub async fn deal_view(st: &AppState, me: &Me, d: &Deal, p: &Principal, viewer: 
     let mine = c.ratings.iter().find(|r| r.data.from_user == *me.id()).map(|r| r.data.stars);
     let mut lines: Vec<DealLine> = c.lines.into_iter().map(|r| r.data).collect();
     lines.sort_by_key(|l| l.n);
+    let mut deal = d.clone();
+    // Server-only: with the hash a counterparty could brute-force the 4-digit code.
+    deal.handover_otp_hash = None;
     Ok(DealView {
-        deal: d.clone(),
+        deal,
         viewer,
         listing: ListingSummary::from(&listing.data),
         lines,
@@ -376,7 +379,7 @@ pub async fn settle_delivered(st: &AppState, d: &mut Record<Deal>) -> ApiResult<
         "Your Green Receipt",
         format!("{} recycled. Thank you!", receipt.total_weight),
     )
-    .link(format!("/receipt?id={}&sig={sig}", receipt.id));
+    .link(receipt_link(st, &receipt.id, &sig));
     st.db
         .save_deal_with(
             d,
@@ -410,6 +413,10 @@ pub async fn weigh(State(st): State<AppState>, me: Me, Path(id): Path<String>, J
     }
     let deal_id = d.data.id.clone();
     let mut lines: Vec<DealLine> = lines_of(&st, &deal_id).await?.into_iter().map(|r| r.data).collect();
+    let tax = st.taxonomy().await?;
+    if lines.iter().any(|l| l.status != LineStatus::Removed && tax.is_hazardous(&l.category_id)) {
+        ensure_hazardous_authorized(&st, &d.data).await?;
+    }
     let line = lines.iter_mut().find(|l| l.n == b.line_n).ok_or(ApiError::NotFound("line"))?;
     if line.status == LineStatus::Removed {
         return Err(ApiError::conflict("this line was removed"));
@@ -461,6 +468,18 @@ pub async fn weigh(State(st): State<AppState>, me: Me, Path(id): Path<String>, J
     Ok(Json(deal_view(&st, &me, &d.data, &p, v).await?))
 }
 
+/// Public verification page for a Green Receipt (absolute when the public site is known).
+fn receipt_link(st: &AppState, id: &impl std::fmt::Display, sig: &str) -> String {
+    format!("{}/verify/?id={id}&sig={sig}", st.cfg.public_site_url)
+}
+
+/// Hazardous lines go only to a vendor whose authorization is valid right now
+/// (PLAN.md §1.3); it can expire or be revoked while a deal is open.
+pub async fn ensure_hazardous_authorized(st: &AppState, d: &Deal) -> ApiResult<()> {
+    let ok = st.db.vendor(&d.vendor_id).await?.is_some_and(|v| v.data.hazardous_auth_valid(now()));
+    if ok { Ok(()) } else { Err(ApiError::forbidden("hazardous items need a valid hazardous-waste authorization")) }
+}
+
 /// Keeps the last put per (PK, SK) so a transaction never touches an item twice.
 fn dedupe_ops(ops: &mut Vec<kabados_db::TxOp>) {
     use kabados_db::TxOp;
@@ -510,6 +529,9 @@ pub async fn line_action(
             let b = body.ok_or_else(|| ApiError::bad("category is required"))?.0;
             let tax = st.taxonomy().await?;
             let cat = tax.require(&b.category_id)?;
+            if cat.hazardous {
+                ensure_hazardous_authorized(&st, &d.data).await?;
+            }
             let rules = match d.data.rule_set_version {
                 Some(rv) => st.db.rule_set_version(&d.data.vendor_id, rv).await?,
                 None => st.db.latest_rule_set(&d.data.vendor_id).await?,
@@ -552,6 +574,13 @@ pub async fn line_action(
         "accept-regrade" | "remove" => {
             if d.data.seller_id != *me.id() {
                 return Err(ApiError::forbidden("only the seller can decide on re-graded lines"));
+            }
+            // The amount is locked once the seller confirms the weights.
+            if !matches!(d.data.status, DealStatus::AtPickup | DealStatus::Weighed | DealStatus::LineRegraded) {
+                return Err(ApiError::conflict("lines can only change at pickup, before you confirm the weights"));
+            }
+            if action == "remove" && lines.iter().filter(|l| l.status != LineStatus::Removed).count() <= 1 {
+                return Err(ApiError::conflict("this is the last item; cancel the deal instead"));
             }
             let l = &mut lines[idx];
             if action == "remove" {
@@ -699,7 +728,7 @@ pub async fn get_receipt(State(st): State<AppState>, me: Me, Path(id): Path<Stri
     let rid = d.data.receipt_id.clone().ok_or(ApiError::NotFound("receipt"))?;
     let r = st.db.receipt(&rid).await?.ok_or(ApiError::NotFound("receipt"))?;
     let sig = settle::receipt_sig(&st, &rid);
-    Ok(Json(ReceiptView { verify_path: format!("/receipt?id={rid}&sig={sig}"), receipt: r.data }))
+    Ok(Json(ReceiptView { verify_path: receipt_link(&st, &rid, &sig), receipt: r.data }))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

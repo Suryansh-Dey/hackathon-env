@@ -78,6 +78,8 @@ pub struct Config {
     /// Phone numbers allowed fixed OTPs outside prod (PLAN.md §15.4).
     pub demo_numbers: Vec<String>,
     pub public_base_url: String,
+    /// Public website origin for shareable links (receipt verification); empty → relative links.
+    pub public_site_url: String,
     pub allowed_origins: Vec<String>,
     pub mock_override_until: Option<DateTime<Utc>>,
     pub first_look_minutes: i64,
@@ -130,6 +132,7 @@ impl Config {
             otp_enabled: env("OTP_ENABLED").is_some_and(|v| v == "true" || v == "1"),
             demo_numbers: env("DEMO_NUMBERS").map(|v| v.split(',').map(|s| s.trim().to_owned()).collect()).unwrap_or_default(),
             public_base_url: env("PUBLIC_BASE_URL").unwrap_or_else(|| "http://localhost:3000".into()),
+            public_site_url: env("PUBLIC_SITE_URL").unwrap_or_default().trim_end_matches('/').to_owned(),
             allowed_origins: env("ALLOWED_ORIGINS").map(|v| v.split(',').map(|s| s.trim().to_owned()).collect()).unwrap_or_default(),
             mock_override_until: env("MOCK_OVERRIDE_UNTIL")
                 .and_then(|v| DateTime::parse_from_rfc3339(&v).ok())

@@ -56,8 +56,12 @@ pub async fn payment_request(State(st): State<AppState>, me: Me, Path(id): Path<
     let fare = d.data.transporter_fare.unwrap_or_default();
     let fee = d.data.platform_fee;
     let notes = BTreeMap::from([("deal_id".to_owned(), id.to_string()), ("purpose".to_owned(), "kabados_deal".to_owned())]);
+    if fare.0 < 0 {
+        return Err(ApiError::conflict("the transporter fare is invalid"));
+    }
     let order = st.ix.payments.create_order(seller_amount + fare + fee, id.as_str(), &notes).await?;
     d.data.payment_order_id = Some(order.id.clone());
+    d.data.payment_order_amount = Some(order.amount);
     d.data.status = d.data.status.transition(DealStatus::AwaitingPayment)?;
     st.db.save_deal_with(&mut d, vec![], vec![], vec![]).await?;
     Ok(Json(PaymentRequestView { deal_id: id, order, seller_amount, transporter_fare: fare, platform_fee: fee }))
@@ -75,15 +79,12 @@ pub async fn on_captured(
 ) -> ApiResult<()> {
     let mut d = st.db.deal(deal_id).await?.ok_or(ApiError::NotFound("deal"))?;
     if d.data.payment_order_id.as_deref() != Some(order_id) {
-        tracing::warn!(%order_id, %deal_id, "capture for an unknown order; parking in suspense");
-        return Ok(());
+        return park_in_suspense(st, payment_id, deal_id, amount, "capture for an order this deal no longer uses").await;
     }
-    // Idempotent: a deal only leaves AWAITING_PAYMENT once, so a duplicate or
-    // stale capture (even with a fresh payment id) is a no-op here. Genuine
-    // duplicate webhooks are also deduped by event id in process_webhook.
+    // A deal only leaves AWAITING_PAYMENT once, so a duplicate capture is a
+    // no-op: it reuses the ledger key of the capture already booked.
     if d.data.status != DealStatus::AwaitingPayment {
-        tracing::info!(%deal_id, status = d.data.status.as_str(), "capture ignored; deal not awaiting payment");
-        return Ok(());
+        return park_in_suspense(st, payment_id, deal_id, amount, "capture while the deal is not awaiting payment").await;
     }
     let seller_amount = d.data.final_amount.unwrap_or_default();
     let fare = d.data.transporter_fare.unwrap_or_default();
@@ -94,9 +95,11 @@ pub async fn on_captured(
         fare,
         fee: d.data.platform_fee,
     };
+    // Money only moves for exactly the amount that was ordered and still
+    // matches the deal; anything else waits in suspense for ops.
     let expected = seller_amount + fare + d.data.platform_fee;
-    if amount != expected {
-        tracing::error!(%deal_id, got = amount.0, expected = expected.0, "captured amount mismatch");
+    if amount != expected || d.data.payment_order_amount.is_some_and(|o| o != amount) || fare.0 < 0 {
+        return park_in_suspense(st, payment_id, deal_id, amount, "captured amount does not match the order").await;
     }
     let txn = Transaction::mode_a_capture(format!("rzp-{payment_id}"), deal_id.clone(), &split, now());
     st.db.post_transaction(&txn).await?;
@@ -154,6 +157,27 @@ pub async fn on_captured(
     Ok(())
 }
 
+/// Books a capture that can't be applied to its deal into Suspense for ops
+/// review (keyed like a normal capture, so a replay never double-posts).
+async fn park_in_suspense(st: &AppState, payment_id: &str, deal_id: &DealId, amount: Paise, why: &str) -> ApiResult<()> {
+    tracing::error!(%payment_id, %deal_id, amount = amount.0, why, "capture parked in suspense");
+    let t = Transaction {
+        idempotency_key: format!("rzp-{payment_id}"),
+        kind: TxnKind::PaymentCaptured,
+        deal_id: Some(deal_id.clone()),
+        occurred_at: now(),
+        entries: vec![
+            Entry { account: AccountId::platform(AccountKind::GatewayClearing), side: Side::Debit, amount },
+            Entry { account: AccountId::platform(AccountKind::Suspense), side: Side::Credit, amount },
+        ],
+        memo: Some(why.to_owned()),
+    };
+    if amount.0 > 0 {
+        st.db.post_transaction(&t).await?;
+    }
+    Ok(())
+}
+
 /// Money leaving the clearing account to a party.
 async fn post_simple(st: &AppState, key: &str, kind: TxnKind, deal: &DealId, to: AccountId, amount: Paise) -> ApiResult<PostOutcome> {
     let t = Transaction {
@@ -175,6 +199,15 @@ pub async fn process_webhook(st: &AppState, event_id: &str, body: &[u8]) -> ApiR
     if !st.db.first_time("razorpay", event_id, chrono::Duration::days(7)).await? {
         return Ok(());
     }
+    let res = apply_webhook(st, event_id, body).await;
+    if res.is_err() {
+        // Let Razorpay's retry run it again; on_captured is safe to repeat.
+        st.db.idem_abort("razorpay", event_id).await?;
+    }
+    res
+}
+
+async fn apply_webhook(st: &AppState, event_id: &str, body: &[u8]) -> ApiResult<()> {
     let key = format!("webhooks/razorpay/{}/{event_id}.json", now().format("%Y-%m-%d"));
     if let Err(e) = st.ix.blobs.put(&st.cfg.documents_bucket, &key, body.to_vec(), "application/json").await {
         tracing::warn!(error = %e, "could not archive webhook payload");
@@ -235,9 +268,17 @@ pub async fn verify_checkout(
     if !st.ix.payments.verify_checkout(&b.razorpay_order_id, &b.razorpay_payment_id, &b.razorpay_signature) {
         return Err(ApiError::bad("payment signature is invalid"));
     }
-    let amount = d.data.final_amount.unwrap_or_default() + d.data.transporter_fare.unwrap_or_default() + d.data.platform_fee;
+    // The signature proves this order was paid; Razorpay only captures an order's full amount.
+    let amount = d
+        .data
+        .payment_order_amount
+        .unwrap_or_else(|| d.data.final_amount.unwrap_or_default() + d.data.transporter_fare.unwrap_or_default() + d.data.platform_fee);
     if st.db.first_time("razorpay-checkout", &b.razorpay_payment_id, chrono::Duration::days(7)).await? {
-        on_captured(&st, &b.razorpay_payment_id, &b.razorpay_payment_id, &b.razorpay_order_id, amount, &id).await?;
+        let res = on_captured(&st, &b.razorpay_payment_id, &b.razorpay_payment_id, &b.razorpay_order_id, amount, &id).await;
+        if res.is_err() {
+            st.db.idem_abort("razorpay-checkout", &b.razorpay_payment_id).await?;
+        }
+        res?;
     }
     Ok(StatusCode::NO_CONTENT)
 }

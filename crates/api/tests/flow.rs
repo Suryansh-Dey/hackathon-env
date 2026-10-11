@@ -171,7 +171,7 @@ async fn direct_payment_deal_end_to_end() {
     let r = api.ok(Method::GET, &format!("/v1/deals/{did}/receipt"), &seller, None).await;
     assert_eq!(r["receipt"]["total_weight"], 68_200);
     let path = r["verify_path"].as_str().unwrap();
-    let (rid, sig) = path.trim_start_matches("/receipt?id=").split_once("&sig=").unwrap();
+    let (rid, sig) = path.trim_start_matches("/verify/?id=").split_once("&sig=").unwrap();
     let (s, pubr) = api.call(Method::GET, &format!("/v1/public/receipts/{rid}?sig={sig}"), None, None).await;
     assert_eq!(s, StatusCode::OK, "{pubr}");
     let (s, _) = api.call(Method::GET, &format!("/v1/public/receipts/{rid}?sig=deadbeefdeadbeef"), None, None).await;
@@ -201,6 +201,10 @@ async fn platform_payment_goes_through_signed_webhook() {
             Some(json!({"pickup_method": "SELF_PICKUP", "payment_mode": "A_PLATFORM"})),
         )
         .await;
+    // Platform-paid offers need a validated UPI ID first, so the seller can be paid out.
+    let (s, _) = api.call(Method::POST, &format!("/v1/offers/{}:accept", offer["id"].as_str().unwrap()), Some(&seller), None).await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    api.ok(Method::POST, "/v1/me/payout-methods", &seller, Some(json!({"vpa": "seller@okaxis"}))).await;
     let a = api.ok(Method::POST, &format!("/v1/offers/{}:accept", offer["id"].as_str().unwrap()), &seller, None).await;
     let did = a["deal_id"].as_str().unwrap().to_owned();
     api.ok(Method::POST, &format!("/v1/deals/{did}:arrive"), &vendor, None).await;
@@ -221,11 +225,13 @@ async fn platform_payment_goes_through_signed_webhook() {
     assert!(paid["handover_otp"].as_str().is_some());
     let seller_id = paid["deal"]["seller_id"].as_str().unwrap();
     let final_amount = paid["deal"]["final_amount"].as_i64().unwrap();
-    assert_eq!(api.db.balance(&format!("seller_receivable:{seller_id}")).await.unwrap().0, final_amount);
+    assert!(final_amount > 0);
+    // Credited on capture, then paid out to the seller's UPI ID: nothing is left owed.
+    assert_eq!(api.db.balance(&format!("seller_receivable:{seller_id}")).await.unwrap().0, 0);
     // A second capture attempt on an already-paid deal is a no-op (no double-post).
     let (s, _) = api.call(Method::POST, &format!("/v1/payments/{order}:simulate-capture"), Some(&vendor), None).await;
     assert_eq!(s, StatusCode::NOT_FOUND);
-    assert_eq!(api.db.balance(&format!("seller_receivable:{seller_id}")).await.unwrap().0, final_amount, "capture must not double-post");
+    assert_eq!(api.db.balance(&format!("seller_receivable:{seller_id}")).await.unwrap().0, 0, "capture must not double-post");
 }
 
 #[tokio::test]
