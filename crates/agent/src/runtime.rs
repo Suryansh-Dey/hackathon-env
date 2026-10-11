@@ -27,7 +27,8 @@ pub struct Budgets {
 
 impl Default for Budgets {
     fn default() -> Self {
-        Self { max_steps: 12, max_tokens: 400_000, timeout: Duration::from_secs(120), call_timeout: Duration::from_secs(60) }
+        // Legitimate Pro calls take 10-20 s; 45 s leaves room for a Flash fallback within the run budget.
+        Self { max_steps: 12, max_tokens: 400_000, timeout: Duration::from_secs(120), call_timeout: Duration::from_secs(45) }
     }
 }
 
