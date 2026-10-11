@@ -1,0 +1,1 @@
+//! Typed repositories per aggregate.

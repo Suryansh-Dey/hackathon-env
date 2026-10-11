@@ -1,0 +1,28 @@
+[package]
+name = "kabados-db"
+description = "DynamoDB key builders, item types and repositories (PLAN.md §16), with an in-memory backend for tests and local dev"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kabados-domain.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+base64.workspace = true
+aws-sdk-dynamodb.workspace = true
+aws-smithy-runtime-api.workspace = true
+
+[dev-dependencies]
+aws-config.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true
