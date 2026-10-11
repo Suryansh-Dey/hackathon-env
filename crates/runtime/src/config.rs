@@ -38,12 +38,6 @@ pub struct ProviderModes {
 }
 
 impl ProviderModes {
-    /// True when any user-facing flow is backed by a mock or sandbox, which
-    /// makes clients show the "Test mode" banner (PLAN.md §15.4).
-    pub fn test_mode(&self) -> bool {
-        [self.whatsapp, self.sms, self.payments, self.route, self.payouts, self.kyc, self.integrity].iter().any(|m| *m != Mode::Live)
-    }
-
     /// Money-moving, identity and AI integrations.
     fn critical(&self) -> [(&'static str, Mode); 7] {
         [
@@ -78,6 +72,9 @@ pub struct Config {
     pub avp_policy_store_id: Option<String>,
     pub kms_key_id: Option<String>,
     pub modes: ProviderModes,
+    /// When false (current decision), sign-in is phone-number only: no OTP is
+    /// sent or verified. When true, Cognito SMS_OTP + the custom sender run.
+    pub otp_enabled: bool,
     /// Phone numbers allowed fixed OTPs outside prod (PLAN.md §15.4).
     pub demo_numbers: Vec<String>,
     pub public_base_url: String,
@@ -130,6 +127,7 @@ impl Config {
                 integrity: mode("INTEGRITY_MODE", default),
                 ai: mode("AI_MODE", default),
             },
+            otp_enabled: env("OTP_ENABLED").is_some_and(|v| v == "true" || v == "1"),
             demo_numbers: env("DEMO_NUMBERS").map(|v| v.split(',').map(|s| s.trim().to_owned()).collect()).unwrap_or_default(),
             public_base_url: env("PUBLIC_BASE_URL").unwrap_or_else(|| "http://localhost:3000".into()),
             allowed_origins: env("ALLOWED_ORIGINS").map(|v| v.split(',').map(|s| s.trim().to_owned()).collect()).unwrap_or_default(),
@@ -209,8 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mode_banner() {
-        assert!(cfg("dev", Mode::Sandbox).modes.test_mode());
-        assert!(!cfg("prod", Mode::Live).modes.test_mode());
+    fn otp_is_off_unless_enabled() {
+        assert!(!Config::from_env().otp_enabled || std::env::var("OTP_ENABLED").is_ok());
     }
 }
