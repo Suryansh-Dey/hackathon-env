@@ -276,7 +276,7 @@ fn seller_listing_management_follows_domain_state_machine() {
         check(&w, &format!("{ls:?}"), &owner, Action::ViewListing, &r, true);
         check(&w, &format!("{ls:?}"), &owner, Action::ViewOffers, &r, true);
         check(&w, &format!("{ls:?}"), &owner, Action::EditListing, &r, ls.is_editable());
-        check(&w, &format!("{ls:?}"), &owner, Action::PublishListing, &r, ls.can_transition_to(ListingStatus::Published));
+        check(&w, &format!("{ls:?}"), &owner, Action::PublishListing, &r, ls.is_publishable());
         check(&w, &format!("{ls:?}"), &owner, Action::WithdrawListing, &r, ls.can_transition_to(ListingStatus::Withdrawn));
         for a in [Action::ViewListing, Action::ViewOffers, Action::EditListing, Action::PublishListing, Action::WithdrawListing] {
             check(&w, &format!("other seller {ls:?}"), &other, a, &r, false);

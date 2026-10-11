@@ -97,6 +97,7 @@ fn offer(l: &Listing, vendor: &UserId) -> Offer {
         total_high: Paise(600_000),
         covered_weight_low: Grams(9_000),
         covered_weight_high: Grams(11_000),
+        distance_m: 2_000,
         valid_until: Utc::now(),
         slot: None,
         pickup_method: PickupMethod::SelfPickup,
@@ -296,4 +297,32 @@ async fn audit_log_is_append_only_per_subject() {
     assert_eq!(db.audit_log("usr_x").await.unwrap().len(), 2);
     assert_eq!(store.dump(Table::Audit).len(), 2);
     let _ = store.get(Table::Audit, "x", "y").await.unwrap();
+}
+
+#[tokio::test]
+async fn user_deals_status_filter_follows_transitions() {
+    let (db, _) = db();
+    let seller = UserId::new();
+    let (l, v) = listing(&seller);
+    let (mut lrec, _) = db.create_listing(l.clone(), v).await.unwrap();
+    let mut offer = db.create_offer(offer(&l, &UserId::new()), None, vec![]).await.unwrap();
+    lrec.data.status = ListingStatus::Reserved;
+    offer.data.status = OfferStatus::Accepted;
+    let deal = deal_from(&l, &offer.data);
+    let mut d = db.accept_offer(&mut lrec, &mut offer, deal, vec![]).await.unwrap();
+
+    // Newly created: CREATED
+    let (created, _) = db.user_deals(&seller, Some(DealStatus::Created), None).await.unwrap();
+    assert_eq!(created.len(), 1, "created filter");
+
+    // Transition to AWAITING_PAYMENT and re-query.
+    d.data.status = DealStatus::AwaitingPayment;
+    db.save_deal_with(&mut d, vec![], vec![], vec![]).await.unwrap();
+    let (none, _) = db.user_deals(&seller, None, None).await.unwrap();
+    assert_eq!(none.len(), 1, "no filter still sees exactly one");
+    assert_eq!(none[0].status, DealStatus::AwaitingPayment, "index reflects new status");
+    let (old, _) = db.user_deals(&seller, Some(DealStatus::Created), None).await.unwrap();
+    let (new, _) = db.user_deals(&seller, Some(DealStatus::AwaitingPayment), None).await.unwrap();
+    assert_eq!(old.len(), 0, "stale-status filter must NOT match");
+    assert_eq!(new.len(), 1, "new-status filter must match");
 }

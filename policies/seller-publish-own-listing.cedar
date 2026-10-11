@@ -1,4 +1,4 @@
-// Sellers publish (or republish) their own listing from READY, EXPIRED or CANCELLED.
+// Sellers publish (or republish) their own listing. DRAFT/NEEDS_INPUT are allowed because a seller may skip AI; the domain publish() enforces the state path.
 permit (
   principal is Kabados::Seller,
   action == Kabados::Action::"PublishListing",
@@ -6,5 +6,5 @@ permit (
 )
 when {
   resource.seller == principal &&
-  ["READY", "EXPIRED", "CANCELLED"].contains(resource.status)
+  ["DRAFT", "NEEDS_INPUT", "READY", "EXPIRED", "CANCELLED"].contains(resource.status)
 };

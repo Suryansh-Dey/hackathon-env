@@ -45,6 +45,13 @@ impl ListingStatus {
         }
     }
 
+    /// Statuses a seller may publish (or republish) from. DRAFT/NEEDS_INPUT are
+    /// included because a seller may skip AI; `publish()` walks the state path
+    /// (Draft→Ready→Published) internally. Mirrors the Cedar publish policy.
+    pub fn is_publishable(self) -> bool {
+        matches!(self, Self::Draft | Self::NeedsInput | Self::Ready | Self::Expired | Self::Cancelled)
+    }
+
     /// Seller may still edit items, photos and preferences.
     pub fn is_editable(self) -> bool {
         matches!(self, Self::Draft | Self::NeedsInput | Self::Ready | Self::Published | Self::Expired | Self::Cancelled)
@@ -438,6 +445,17 @@ mod tests {
         assert!(NeedsInput.can_transition_to(Ready));
         assert!(Expired.can_transition_to(Published));
         assert!(Cancelled.can_transition_to(Published));
+    }
+
+    #[test]
+    fn publishable_is_editable_minus_published() {
+        use ListingStatus::*;
+        for s in [Draft, NeedsInput, Ready, Expired, Cancelled] {
+            assert!(s.is_publishable(), "{s:?} should be publishable");
+        }
+        for s in [Published, Reserved, Completed, PartiallyCompleted, Withdrawn, Blocked, Analyzing] {
+            assert!(!s.is_publishable(), "{s:?} must not be publishable");
+        }
     }
 
     #[test]
