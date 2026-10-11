@@ -25,6 +25,7 @@ Receipt anyone can verify.
 | Authorised e-waste vendor | `+919800000002`, "GreenCycle E-Waste (authorized)", Delhi |
 | Unauthorised vendor (for contrast) | `+919800000001`, "Raju Kabadiwala", Delhi |
 | Other Delhi vendor | `+919800000003`, "Metro Metals" |
+| Driver (transporter app) | another fresh number, e.g. `+919812345602` (not a vendor's or the seller's) |
 | Razorpay test payment | card `4111 1111 1111 1111`, any future expiry, any CVV, or UPI `success@razorpay` |
 
 **Photos to bring:** 3–4 clear, well-lit phone photos of real scrap. The story works best with:
@@ -145,6 +146,10 @@ the voice-over (VO).
 4. Seller: the big **4-digit "Handover code"** appears.
 5. Vendor: "Handover OTP (from seller)" → "Confirm handover", then "Confirm delivery at yard".
 
+*Variant with a driver:* for a non-hazardous lot, replace step 1 with a 10–15 s cutaway
+to the transporter app. The driver accepts the job, taps "I've arrived" and weighs the
+items; later they enter the handover code with "Verify code & load". See §7.
+
 > VO: "The final amount is the same pricing engine applied to the scale reading, so the
 > quote and the settlement can't drift apart. Money is locked once the seller confirms,
 > the vendor pays through Razorpay, and the goods only leave once the seller is paid.
@@ -247,7 +252,83 @@ Lines worth quoting:
 
 ---
 
-## 7. Optional extras (for Q&A or a longer cut)
+## 7. Transporter app (driver) demo
+
+A Dioxus desktop app (Rust) that uses the same live AWS API as the websites.
+
+### 7.1 Launch it
+
+It's already built (the one-time `sudo pacman -S xdotool` for `libxdo` is done). From the
+repo root:
+
+```bash
+./apps/transporter/target/release/kabados-transporter
+```
+
+- **After code changes, rebuild and run** with
+  `cd apps/transporter && cargo run --release`. The first build takes about 8 minutes;
+  later ones are quick.
+- **API:** it talks to the live API by default. `KABADOS_API=http://localhost:8080` points
+  it at a local dev server instead.
+- **Session:** saved in `~/.config/kabados-transporter/session.json`, so the driver stays
+  signed in across restarts. Use "Sign out", or delete that file, to start fresh.
+- **If the window opens blank** (a WebKitGTK issue on some Wayland/GPU setups), start it as
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1 ./apps/transporter/target/release/kabados-transporter`.
+- **Recording layout:** seller site, vendor site and the driver app as a narrow window on
+  the right, like a phone. Or record the driver part as its own clip.
+
+### 7.2 Set up before recording (about 3 minutes)
+
+1. **Driver app:** under "Driver sign-in", enter the driver number and click "Continue".
+2. **"Set up your driver account":** fill in "Your name", tick "I am 18 or older", and
+   choose a "Vehicle type" (e.g. Tempo). Enter "Payload (kg)" and "Registration number"
+   (e.g. `DL01AB1234`), then click "Start driving".
+3. Click **"Go on duty"**; it changes to "On duty ✓". Only on-duty drivers see job offers.
+4. **Vendor site**, as Metro Metals (`+919800000003`): "Transporters" → "Invite a
+   transporter". Enter the driver's number as "Phone" and a "Display name" (e.g.
+   `Ravi (Tempo)`), then click "Invite".
+   - The driver must have clicked "Start driving" first, or the invite fails.
+
+### 7.3 The pickup with a driver
+
+Metro Metals isn't authorised for e-waste, so use a **non-hazardous lot** (copper wire,
+newspapers) at pin `28.6139, 77.2090`, city `Delhi`.
+
+1. **Seller:** create and publish the listing (§3, steps 0:15–0:50).
+2. **Vendor** (Metro Metals): open the lead under "Matches". In "Make an offer", set
+   "Pickup method" to **"Use a transporter"**. "Direct to seller (Mode B)" is the simplest
+   payment choice here. Click "Send offer".
+3. **Seller:** "Accept".
+4. **Vendor deal page:** "Next step" → **"Assign transporter"** → "Assign a pickup job".
+   - "Fare (₹)": e.g. `250`.
+   - "Dispatch": Sequential.
+   - **"Accept timeout (seconds)": `1800`.** An offer that expires leaves the deal stuck.
+   - Tick the driver, then click "Offer job".
+5. **Driver app:** within about 5 s the offer appears under "Job offers", with the fare and
+   "Expires in m:ss". Then:
+   - "Accept" (the pickup address unlocks).
+   - "Start navigating", then **"I've arrived"**. The seller's deal moves to "at pickup".
+   - **"Weigh each item":** enter the kg for each line and click "Save". The app shows
+     "Total for the seller: ₹…", calculated by the server's pricing engine.
+6. **Seller:** "Confirm weights".
+7. **Payment** (Mode B): vendor "Mark paid directly (Mode B)", then seller "I received
+   payment". The seller now sees the 4-digit **"Handover code"**.
+8. **Driver app:** in "Handover", enter the seller's code and click **"Verify code &
+   load"**. Then "In transit to yard", then "Arrived at yard".
+9. **Vendor:** "Confirm delivery at yard". The deal settles, the seller gets the Green
+   Receipt, and the driver's job shows as delivered.
+
+The driver app updates itself every 5 seconds: job offers and the open job (e.g. it
+moves on from waiting to "Handover" once payment lands). The websites don't refresh on
+their own, so press F5 there. If you close the job screen, click "Open" under
+"Active jobs" to get back to it.
+
+What the app enforces: the driver can't mark the goods loaded without the seller's code,
+and only the vendor confirms delivery. Payment always comes before handover.
+
+---
+
+## 8. Optional extras (for Q&A or a longer cut)
 
 - **Vendor rate card by typing:**
   - "Rate card" → "Draft from text", e.g. "copper 650, brass 400, paper 14 above 5 kilo,
@@ -259,14 +340,6 @@ Lines worth quoting:
   - Sign in with any +91 number plus the admin key.
   - "Config" shows the provider modes.
   - "KYC" → status "approved" → "Reject" a transporter, and Cedar blocks them immediately.
-- **Transporter app** (Dioxus desktop, uses the same AWS API):
-  1. One-time setup: `sudo pacman -S xdotool` (provides `libxdo`).
-  2. Start it: `cd apps/transporter && cargo run --release`.
-  3. Driver: sign in with a fresh number, "Start driving", then "Go on duty".
-  4. Vendor: "Transporters" → "Invite a transporter". Make the offer with "Use a
-     transporter", then on the deal "Assign transporter", and set "Accept timeout" to 1800 s.
-  5. The driver sees the offer within 5 s, then works through the checklist: weigh each
-     item, wait for payment, then the "Verify code & load" handover.
 - **Skip on camera:**
   - The Rate Index page stays empty until a city has 20 deals from 5 vendors in a week
     (that's the k-anonymity rule, and you can pitch it as such).
