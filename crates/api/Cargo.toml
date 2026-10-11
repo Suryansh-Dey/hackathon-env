@@ -1,0 +1,50 @@
+[package]
+name = "kabados-api"
+description = "KabadOS REST API: axum routers per bounded context, served on Lambda (PLAN.md §17)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kabados-domain.workspace = true
+kabados-pricing.workspace = true
+kabados-db.workspace = true
+kabados-authz.workspace = true
+kabados-integrations.workspace = true
+kabados-runtime.workspace = true
+kabados-agent.workspace = true
+kabados-agents.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+futures.workspace = true
+rand.workspace = true
+tracing.workspace = true
+base64.workspace = true
+sha2.workspace = true
+hex.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+lambda_http.workspace = true
+utoipa.workspace = true
+schemars.workspace = true
+http-body-util = "0.1"
+aws-config.workspace = true
+aws-sdk-secretsmanager.workspace = true
+aws-sdk-kms.workspace = true
+aws-sdk-sqs.workspace = true
+aws-sdk-verifiedpermissions.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower = { workspace = true, features = ["util"] }
+
+[lints]
+workspace = true
