@@ -1,0 +1,51 @@
+[package]
+name = "kabados-integrations"
+description = "Provider ports with mock/sandbox/live adapters and thin AWS service wrappers (PLAN.md §15.4)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kabados-domain.workspace = true
+kabados-db.workspace = true
+kabados-runtime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+base64.workspace = true
+sha2.workspace = true
+hex.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+url.workspace = true
+aws-config.workspace = true
+aws-credential-types.workspace = true
+aws-sigv4.workspace = true
+aws-sdk-s3.workspace = true
+aws-sdk-geoplaces.workspace = true
+aws-sdk-georoutes.workspace = true
+aws-sdk-location.workspace = true
+aws-sdk-rekognition.workspace = true
+aws-sdk-textract.workspace = true
+aws-sdk-chimesdkmeetings.workspace = true
+aws-sdk-sns.workspace = true
+aws-sdk-sesv2.workspace = true
+aws-sdk-socialmessaging.workspace = true
+aws-sdk-pinpointsmsvoicev2.workspace = true
+aws-sdk-eventbridge.workspace = true
+http = "1"
+utoipa.workspace = true
+schemars.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true
