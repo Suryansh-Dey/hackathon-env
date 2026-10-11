@@ -1,0 +1,201 @@
+{
+  "description": "Readable allow/deny scenarios for the KabadOS Cedar policies (PLAN.md §18.2). Users are symbolic names; each run maps them to fresh IDs. Principal flags default to kycApproved=true, hazardousAuthValid=false, suspended=false, mfa=true. Run by crates/authz/tests/scenarios.rs; exhaustive role × action × state tables live in crates/authz/tests/policy_tables.rs.",
+  "scenarios": [
+    {
+      "name": "seller manages own draft",
+      "principal": {"type": "Seller", "user": "asha"},
+      "action": "EditListing",
+      "resource": {"type": "Listing", "seller": "asha", "status": "DRAFT"},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "seller cannot edit someone else's listing",
+      "principal": {"type": "Seller", "user": "ravi"},
+      "action": "EditListing",
+      "resource": {"type": "Listing", "seller": "asha", "status": "DRAFT"},
+      "expect": "DENY"
+    },
+    {
+      "name": "approved vendor browses a published listing",
+      "principal": {"type": "Vendor", "user": "kabadi"},
+      "action": "ViewListing",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED"},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "vendor without approved KYC cannot browse",
+      "principal": {"type": "Vendor", "user": "kabadi", "kycApproved": false},
+      "action": "ViewListing",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED"},
+      "expect": "DENY"
+    },
+    {
+      "name": "published listing never reveals the exact address to a browsing vendor",
+      "principal": {"type": "Vendor", "user": "kabadi"},
+      "action": "ViewExactAddress",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED"},
+      "expect": "DENY"
+    },
+    {
+      "name": "accepted vendor sees the exact address while the deal is active",
+      "principal": {"type": "Vendor", "user": "kabadi"},
+      "action": "ViewExactAddress",
+      "resource": {"type": "Listing", "seller": "asha", "status": "RESERVED", "acceptedVendor": "kabadi", "dealStatus": "PICKUP_SCHEDULED"},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "accepted vendor loses the exact address after handover",
+      "principal": {"type": "Vendor", "user": "kabadi"},
+      "action": "ViewExactAddress",
+      "resource": {"type": "Listing", "seller": "asha", "status": "RESERVED", "acceptedVendor": "kabadi", "dealStatus": "HANDED_OVER"},
+      "expect": "DENY"
+    },
+    {
+      "name": "assigned transporter sees the address en route",
+      "principal": {"type": "Transporter", "user": "tara"},
+      "action": "ViewExactAddress",
+      "resource": {"type": "Listing", "seller": "asha", "status": "RESERVED", "assignedTransporter": "tara", "jobStatus": "EN_ROUTE"},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "assigned transporter loses the address once loaded",
+      "principal": {"type": "Transporter", "user": "tara"},
+      "action": "ViewExactAddress",
+      "resource": {"type": "Listing", "seller": "asha", "status": "RESERVED", "assignedTransporter": "tara", "jobStatus": "LOADED"},
+      "expect": "DENY"
+    },
+    {
+      "name": "society admin never sees a resident's exact address",
+      "principal": {"type": "SocietyAdmin", "user": "secretary"},
+      "action": "ViewExactAddress",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED", "driveAdmin": "secretary"},
+      "expect": "DENY"
+    },
+    {
+      "name": "vendor offers on a published listing",
+      "principal": {"type": "Vendor", "user": "kabadi"},
+      "action": "MakeOffer",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED"},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "hazardous lot: unauthorized vendor is forbidden to offer",
+      "principal": {"type": "Vendor", "user": "kabadi"},
+      "action": "MakeOffer",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED", "containsHazardous": true},
+      "expect": "DENY"
+    },
+    {
+      "name": "hazardous lot: authorized recycler may offer",
+      "principal": {"type": "Vendor", "user": "recycler", "hazardousAuthValid": true},
+      "action": "MakeOffer",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED", "containsHazardous": true},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "suspended vendor cannot offer",
+      "principal": {"type": "Vendor", "user": "kabadi", "suspended": true},
+      "action": "MakeOffer",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED"},
+      "expect": "DENY"
+    },
+    {
+      "name": "a user acting as vendor cannot offer on their own listing",
+      "principal": {"type": "Vendor", "user": "asha"},
+      "action": "MakeOffer",
+      "resource": {"type": "Listing", "seller": "asha", "status": "PUBLISHED"},
+      "expect": "DENY"
+    },
+    {
+      "name": "seller accepts an active offer",
+      "principal": {"type": "Seller", "user": "asha"},
+      "action": "AcceptOffer",
+      "resource": {"type": "Offer", "vendor": "kabadi", "status": "ACTIVE", "listing": {"type": "Listing", "seller": "asha", "status": "PUBLISHED"}},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "seller cannot accept a superseded offer",
+      "principal": {"type": "Seller", "user": "asha"},
+      "action": "AcceptOffer",
+      "resource": {"type": "Offer", "vendor": "kabadi", "status": "SUPERSEDED", "listing": {"type": "Listing", "seller": "asha", "status": "PUBLISHED"}},
+      "expect": "DENY"
+    },
+    {
+      "name": "transporter cannot hand over before payment",
+      "principal": {"type": "Transporter", "user": "tara"},
+      "action": "Handover",
+      "resource": {"type": "Deal", "seller": "asha", "vendor": "kabadi", "transporter": "tara", "status": "SELLER_CONFIRMED"},
+      "expect": "DENY"
+    },
+    {
+      "name": "transporter enters the handover OTP after payment",
+      "principal": {"type": "Transporter", "user": "tara"},
+      "action": "Handover",
+      "resource": {"type": "Deal", "seller": "asha", "vendor": "kabadi", "transporter": "tara", "status": "PAID"},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "in-app call between participants of an open deal",
+      "principal": {"type": "Seller", "user": "asha"},
+      "action": "StartCall",
+      "resource": {"type": "Deal", "seller": "asha", "vendor": "kabadi", "status": "AT_PICKUP"},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "no calls after settlement",
+      "principal": {"type": "Vendor", "user": "kabadi"},
+      "action": "StartCall",
+      "resource": {"type": "Deal", "seller": "asha", "vendor": "kabadi", "status": "SETTLED"},
+      "expect": "DENY"
+    },
+    {
+      "name": "outsider cannot call into a deal",
+      "principal": {"type": "Vendor", "user": "other"},
+      "action": "StartCall",
+      "resource": {"type": "Deal", "seller": "asha", "vendor": "kabadi", "status": "AT_PICKUP"},
+      "expect": "DENY"
+    },
+    {
+      "name": "offered transporter accepts an open job",
+      "principal": {"type": "Transporter", "user": "tara"},
+      "action": "AcceptJob",
+      "resource": {"type": "Job", "offeredTo": ["tara", "tom"], "status": "OFFERED", "deal": {"type": "Deal", "seller": "asha", "vendor": "kabadi", "status": "PICKUP_SCHEDULED"}},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "transporter without approved KYC cannot accept",
+      "principal": {"type": "Transporter", "user": "tara", "kycApproved": false},
+      "action": "AcceptJob",
+      "resource": {"type": "Job", "offeredTo": ["tara"], "status": "OFFERED", "deal": {"type": "Deal", "seller": "asha", "vendor": "kabadi", "status": "PICKUP_SCHEDULED"}},
+      "expect": "DENY"
+    },
+    {
+      "name": "chat closes when the listing is withdrawn and no deal is open",
+      "principal": {"type": "Vendor", "user": "kabadi"},
+      "action": "PostMessage",
+      "resource": {"type": "Thread", "seller": "asha", "vendor": "kabadi", "listingStatus": "WITHDRAWN", "dealOpen": false},
+      "expect": "DENY"
+    },
+    {
+      "name": "any seller joins an open drive",
+      "principal": {"type": "Seller", "user": "ravi"},
+      "action": "JoinDrive",
+      "resource": {"type": "Drive", "admin": "secretary", "status": "OPEN"},
+      "expect": "ALLOW"
+    },
+    {
+      "name": "ops console requires MFA",
+      "principal": {"type": "Ops", "user": "staff-1", "mfa": false},
+      "action": "OpsReviewKyc",
+      "resource": {"type": "Platform"},
+      "expect": "DENY"
+    },
+    {
+      "name": "ops agent with MFA reviews KYC",
+      "principal": {"type": "Ops", "user": "staff-1"},
+      "action": "OpsReviewKyc",
+      "resource": {"type": "Platform"},
+      "expect": "ALLOW"
+    }
+  ]
+}

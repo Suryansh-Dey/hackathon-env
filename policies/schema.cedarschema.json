@@ -1,0 +1,670 @@
+{
+  "Kabados": {
+    "entityTypes": {
+      "Deal": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "seller": {
+              "type": "Entity",
+              "name": "Seller"
+            },
+            "status": {
+              "type": "String"
+            },
+            "transporter": {
+              "required": false,
+              "type": "Entity",
+              "name": "Transporter"
+            },
+            "vendor": {
+              "type": "Entity",
+              "name": "Vendor"
+            }
+          }
+        }
+      },
+      "Drive": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "admin": {
+              "type": "Entity",
+              "name": "SocietyAdmin"
+            },
+            "status": {
+              "type": "String"
+            }
+          }
+        }
+      },
+      "Job": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "deal": {
+              "type": "Entity",
+              "name": "Deal"
+            },
+            "offeredTo": {
+              "type": "Set",
+              "element": {
+                "type": "Entity",
+                "name": "Transporter"
+              }
+            },
+            "status": {
+              "type": "String"
+            },
+            "transporter": {
+              "required": false,
+              "type": "Entity",
+              "name": "Transporter"
+            }
+          }
+        }
+      },
+      "Listing": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "acceptedVendor": {
+              "required": false,
+              "type": "Entity",
+              "name": "Vendor"
+            },
+            "assignedTransporter": {
+              "required": false,
+              "type": "Entity",
+              "name": "Transporter"
+            },
+            "containsHazardous": {
+              "type": "Boolean"
+            },
+            "dealStatus": {
+              "required": false,
+              "type": "String"
+            },
+            "driveAdmin": {
+              "required": false,
+              "type": "Entity",
+              "name": "SocietyAdmin"
+            },
+            "jobStatus": {
+              "required": false,
+              "type": "String"
+            },
+            "seller": {
+              "type": "Entity",
+              "name": "Seller"
+            },
+            "sellerId": {
+              "type": "String"
+            },
+            "status": {
+              "type": "String"
+            }
+          }
+        }
+      },
+      "Offer": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "listing": {
+              "type": "Entity",
+              "name": "Listing"
+            },
+            "status": {
+              "type": "String"
+            },
+            "vendor": {
+              "type": "Entity",
+              "name": "Vendor"
+            }
+          }
+        }
+      },
+      "OpsAgent": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "mfa": {
+              "type": "Boolean"
+            }
+          }
+        }
+      },
+      "Platform": {},
+      "Seller": {},
+      "SocietyAdmin": {},
+      "Thread": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "dealOpen": {
+              "type": "Boolean"
+            },
+            "listingStatus": {
+              "type": "String"
+            },
+            "seller": {
+              "type": "Entity",
+              "name": "Seller"
+            },
+            "vendor": {
+              "type": "Entity",
+              "name": "Vendor"
+            }
+          }
+        }
+      },
+      "Transporter": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "kycApproved": {
+              "type": "Boolean"
+            },
+            "suspended": {
+              "type": "Boolean"
+            }
+          }
+        }
+      },
+      "Vendor": {
+        "shape": {
+          "type": "Record",
+          "attributes": {
+            "hazardousAuthValid": {
+              "type": "Boolean"
+            },
+            "kycApproved": {
+              "type": "Boolean"
+            },
+            "suspended": {
+              "type": "Boolean"
+            },
+            "userId": {
+              "type": "String"
+            }
+          }
+        }
+      }
+    },
+    "actions": {
+      "AcceptJob": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Job"
+          ],
+          "principalTypes": [
+            "Transporter"
+          ]
+        }
+      },
+      "AcceptOffer": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Offer"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "AssignTransporter": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Vendor"
+          ]
+        }
+      },
+      "CancelDeal": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor"
+          ]
+        }
+      },
+      "ConfirmDelivery": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Vendor"
+          ]
+        }
+      },
+      "ConfirmReceived": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "ConfirmWeights": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "CounterOffer": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Offer"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "DeclineJob": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Job"
+          ],
+          "principalTypes": [
+            "Transporter"
+          ]
+        }
+      },
+      "EditListing": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Listing"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "Handover": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Vendor",
+            "Transporter"
+          ]
+        }
+      },
+      "JoinDrive": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Drive"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "MakeOffer": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Listing"
+          ],
+          "principalTypes": [
+            "Vendor"
+          ]
+        }
+      },
+      "ManageDrive": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Drive"
+          ],
+          "principalTypes": [
+            "SocietyAdmin"
+          ]
+        }
+      },
+      "MarkPaidDirect": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Vendor"
+          ]
+        }
+      },
+      "OpenDispute": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor",
+            "Transporter"
+          ]
+        }
+      },
+      "OpsManageConfig": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Platform",
+            "Listing",
+            "Deal"
+          ],
+          "principalTypes": [
+            "OpsAgent"
+          ]
+        }
+      },
+      "OpsManageTaxonomy": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Platform",
+            "Listing",
+            "Deal"
+          ],
+          "principalTypes": [
+            "OpsAgent"
+          ]
+        }
+      },
+      "OpsPublishRateIndex": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Platform",
+            "Listing",
+            "Deal"
+          ],
+          "principalTypes": [
+            "OpsAgent"
+          ]
+        }
+      },
+      "OpsResolveDispute": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Platform",
+            "Listing",
+            "Deal"
+          ],
+          "principalTypes": [
+            "OpsAgent"
+          ]
+        }
+      },
+      "OpsReviewAi": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Platform",
+            "Listing",
+            "Deal"
+          ],
+          "principalTypes": [
+            "OpsAgent"
+          ]
+        }
+      },
+      "OpsReviewKyc": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Platform",
+            "Listing",
+            "Deal"
+          ],
+          "principalTypes": [
+            "OpsAgent"
+          ]
+        }
+      },
+      "OpsViewFraud": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Platform",
+            "Listing",
+            "Deal"
+          ],
+          "principalTypes": [
+            "OpsAgent"
+          ]
+        }
+      },
+      "PostJobPosition": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Job"
+          ],
+          "principalTypes": [
+            "Transporter"
+          ]
+        }
+      },
+      "PostMessage": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Thread"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor"
+          ]
+        }
+      },
+      "PublishListing": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Listing"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "RateDeal": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor",
+            "Transporter"
+          ]
+        }
+      },
+      "RecordWeighing": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Vendor",
+            "Transporter"
+          ]
+        }
+      },
+      "RegradeLine": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Vendor",
+            "Transporter"
+          ]
+        }
+      },
+      "RejectOffer": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Offer"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "RequestPayment": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Vendor"
+          ]
+        }
+      },
+      "StartCall": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor",
+            "Transporter"
+          ]
+        }
+      },
+      "UpdateJob": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Job"
+          ],
+          "principalTypes": [
+            "Vendor",
+            "Transporter"
+          ]
+        }
+      },
+      "ViewDeal": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor",
+            "Transporter",
+            "OpsAgent"
+          ]
+        }
+      },
+      "ViewDriveReport": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Drive"
+          ],
+          "principalTypes": [
+            "SocietyAdmin"
+          ]
+        }
+      },
+      "ViewExactAddress": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Listing"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor",
+            "Transporter",
+            "SocietyAdmin",
+            "OpsAgent"
+          ]
+        }
+      },
+      "ViewJob": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Job"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor",
+            "Transporter"
+          ]
+        }
+      },
+      "ViewListing": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Listing"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor",
+            "Transporter",
+            "SocietyAdmin",
+            "OpsAgent"
+          ]
+        }
+      },
+      "ViewOffers": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Listing"
+          ],
+          "principalTypes": [
+            "Seller",
+            "OpsAgent"
+          ]
+        }
+      },
+      "ViewReceipt": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Deal"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor"
+          ]
+        }
+      },
+      "ViewThread": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Thread"
+          ],
+          "principalTypes": [
+            "Seller",
+            "Vendor"
+          ]
+        }
+      },
+      "WithdrawListing": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Listing"
+          ],
+          "principalTypes": [
+            "Seller"
+          ]
+        }
+      },
+      "WithdrawOffer": {
+        "appliesTo": {
+          "resourceTypes": [
+            "Offer"
+          ],
+          "principalTypes": [
+            "Vendor"
+          ]
+        }
+      }
+    }
+  }
+}

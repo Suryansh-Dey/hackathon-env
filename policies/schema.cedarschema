@@ -1,0 +1,111 @@
+// KabadOS Cedar schema (PLAN.md §18.1).
+//
+// Principals are typed by the role a user is acting in: the same user ID can
+// appear as a Seller, Vendor, Transporter or SocietyAdmin. Status attributes
+// are the SCREAMING_SNAKE_CASE strings used on the wire. Time-dependent facts
+// (authorization expiry, KYC, suspension) are resolved into booleans by the
+// entity loader in crates/authz at request time.
+namespace Kabados {
+  entity Seller;
+
+  entity Vendor = {
+    // Raw user ID, used to stop a user offering on their own listing.
+    userId: String,
+    kycApproved: Bool,
+    hazardousAuthValid: Bool,
+    suspended: Bool,
+  };
+
+  entity Transporter = {
+    kycApproved: Bool,
+    suspended: Bool,
+  };
+
+  entity SocietyAdmin;
+
+  entity OpsAgent = {
+    mfa: Bool,
+  };
+
+  // The platform itself, the resource for ops-console actions.
+  entity Platform;
+
+  entity Listing = {
+    seller: Seller,
+    sellerId: String,
+    status: String,
+    containsHazardous: Bool,
+    acceptedVendor?: Vendor,
+    dealStatus?: String,
+    assignedTransporter?: Transporter,
+    jobStatus?: String,
+    driveAdmin?: SocietyAdmin,
+  };
+
+  entity Deal = {
+    seller: Seller,
+    vendor: Vendor,
+    transporter?: Transporter,
+    status: String,
+  };
+
+  entity Offer = {
+    listing: Listing,
+    vendor: Vendor,
+    status: String,
+  };
+
+  entity Job = {
+    deal: Deal,
+    transporter?: Transporter,
+    offeredTo: Set<Transporter>,
+    status: String,
+  };
+
+  entity Thread = {
+    seller: Seller,
+    vendor: Vendor,
+    listingStatus: String,
+    dealOpen: Bool,
+  };
+
+  entity Drive = {
+    admin: SocietyAdmin,
+    status: String,
+  };
+
+  // ---- listings ----
+  action ViewListing appliesTo { principal: [Seller, Vendor, Transporter, SocietyAdmin, OpsAgent], resource: Listing };
+  action EditListing, PublishListing, WithdrawListing appliesTo { principal: Seller, resource: Listing };
+  action ViewExactAddress appliesTo { principal: [Seller, Vendor, Transporter, SocietyAdmin, OpsAgent], resource: Listing };
+  action MakeOffer appliesTo { principal: Vendor, resource: Listing };
+  action ViewOffers appliesTo { principal: [Seller, OpsAgent], resource: Listing };
+
+  // ---- offers ----
+  action AcceptOffer, CounterOffer, RejectOffer appliesTo { principal: Seller, resource: Offer };
+  action WithdrawOffer appliesTo { principal: Vendor, resource: Offer };
+
+  // ---- deals ----
+  action ViewDeal appliesTo { principal: [Seller, Vendor, Transporter, OpsAgent], resource: Deal };
+  action RecordWeighing, RegradeLine, Handover appliesTo { principal: [Vendor, Transporter], resource: Deal };
+  action ConfirmWeights, ConfirmReceived appliesTo { principal: Seller, resource: Deal };
+  action RequestPayment, MarkPaidDirect, ConfirmDelivery, AssignTransporter appliesTo { principal: Vendor, resource: Deal };
+  action CancelDeal, ViewReceipt appliesTo { principal: [Seller, Vendor], resource: Deal };
+  action OpenDispute, RateDeal, StartCall appliesTo { principal: [Seller, Vendor, Transporter], resource: Deal };
+
+  // ---- jobs ----
+  action ViewJob appliesTo { principal: [Seller, Vendor, Transporter], resource: Job };
+  action AcceptJob, DeclineJob, PostJobPosition appliesTo { principal: Transporter, resource: Job };
+  action UpdateJob appliesTo { principal: [Vendor, Transporter], resource: Job };
+
+  // ---- chat ----
+  action ViewThread, PostMessage appliesTo { principal: [Seller, Vendor], resource: Thread };
+
+  // ---- drives ----
+  action ManageDrive, ViewDriveReport appliesTo { principal: SocietyAdmin, resource: Drive };
+  action JoinDrive appliesTo { principal: Seller, resource: Drive };
+
+  // ---- ops console ----
+  action OpsReviewKyc, OpsReviewAi, OpsResolveDispute, OpsManageTaxonomy, OpsManageConfig, OpsViewFraud, OpsPublishRateIndex
+    appliesTo { principal: OpsAgent, resource: [Platform, Listing, Deal] };
+}
