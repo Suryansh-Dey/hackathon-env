@@ -1,3 +1,11 @@
 /.env
 target/
 /AGENTS.md
+node_modules/
+.next/
+out/
+cdk.out/
+*.tsbuildinfo
+.DS_Store
+/.local/
+/apps/transporter/dist/

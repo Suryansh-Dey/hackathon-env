@@ -1,0 +1,7 @@
+# Lambda runs on Graviton (arm64). Override the user-level `target-cpu=native`
+# so cross builds target the Lambda CPU instead of the build host.
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=neoverse-n1"]
+
+[env]
+KABADOS_REPO_ROOT = { value = "", relative = true }
