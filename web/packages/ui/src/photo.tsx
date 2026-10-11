@@ -3,6 +3,7 @@
 // are resized in the browser and sent straight to storage with a presigned PUT,
 // then marked complete so the backend processes them (EXIF strip, face blur,
 // thumbnail, triage). Works against S3 (deployed) and the local dev blob store.
+// The page shows the uploaded photos from the listing, so there are no local previews.
 import { useState } from 'react';
 import { useAuth } from './auth';
 import { apiBaseUrl } from './query';
@@ -48,7 +49,6 @@ export function PhotoUpload({ listingId, kind = 'WIDE', source = 'GALLERY', proo
   const base = apiBaseUrl();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [previews, setPreviews] = useState<string[]>([]);
 
   async function handle(files: FileList | null) {
     if (!files || !listingId) return;
@@ -73,7 +73,6 @@ export function PhotoUpload({ listingId, kind = 'WIDE', source = 'GALLERY', proo
           headers: { authorization: `Bearer ${token}`, 'idempotency-key': `imgc-${image_id}` },
         });
         if (!complete.ok) throw new Error((await complete.json().catch(() => ({})))?.detail ?? 'Could not finalize the upload');
-        setPreviews((p) => [...p, URL.createObjectURL(blob)]);
         onUploaded?.(image_id);
       }
     } catch (e) {
@@ -98,13 +97,6 @@ export function PhotoUpload({ listingId, kind = 'WIDE', source = 'GALLERY', proo
         />
       </label>
       {err ? <p className="kb-error">{err}</p> : null}
-      {previews.length > 0 ? (
-        <div className="kb-row" style={{ marginTop: 8 }}>
-          {previews.map((u, i) => (
-            <img key={i} src={u} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8 }} />
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
