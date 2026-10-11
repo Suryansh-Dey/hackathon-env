@@ -1,5 +1,5 @@
 'use client';
-import { Badge, Button, Card, ErrorNote, Field, LadderBadge, Spinner, formatRange, formatWeight, stars, useApi, useAuth } from '@kabados/ui';
+import { Badge, Button, Card, ErrorNote, Field, LadderBadge, PhotoUpload, Spinner, formatRange, formatWeight, stars, useApi, useAuth } from '@kabados/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -82,6 +82,17 @@ export default function ListingDetail() {
     onError: (e) => setErr(e instanceof Error ? e.message : 'Could not skip proofs'),
   });
 
+  const provideProof = useMutation({
+    mutationFn: async ({ proofId, imageId }: { proofId: string; imageId: string }) => {
+      setErr(null);
+      const { data, error } = await api.POST(`/v1/listings/${id}/proofs` as '/v1/listings/{id}/proofs', { body: { proof_request_id: proofId, image_ids: [imageId] } });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => listing.refetch(),
+    onError: (e) => setErr(e instanceof Error ? e.message : 'Could not submit proof'),
+  });
+
   const accept = useMutation({
     mutationFn: async (offerId: string) => {
       setErr(null);
@@ -141,6 +152,20 @@ export default function ListingDetail() {
       </div>
       {err ? <ErrorNote>{err}</ErrorNote> : null}
 
+      <Card title="Photos">
+        {l.images.length === 0 ? <p className="kb-muted">No photos on this listing.</p> : (
+          <div className="kb-row">
+            {l.images.map((im) => (im.thumb_url || im.url) ? <img key={im.id} src={im.thumb_url ?? im.url ?? ''} alt="" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8 }} /> : null)}
+          </div>
+        )}
+        {l.listing.status === 'DRAFT' || l.listing.status === 'NEEDS_INPUT' || l.listing.status === 'READY' ? (
+          <div className="kb-row" style={{ marginTop: 10 }}>
+            <PhotoUpload listingId={id} kind="WIDE" source="CAMERA" label="📷 Add photo" onUploaded={() => listing.refetch()} />
+            <PhotoUpload listingId={id} kind="WIDE" source="GALLERY" label="Upload" onUploaded={() => listing.refetch()} />
+          </div>
+        ) : null}
+      </Card>
+
       <Card title="Items">
         {l.items.length === 0 ? <p className="kb-muted">No items yet.</p> : null}
         <ul className="kb-list">
@@ -185,10 +210,13 @@ export default function ListingDetail() {
                     <strong>{p.instruction}</strong>
                     <br />
                     <span className="kb-muted">{p.benefit}</span>
+                    <div style={{ marginTop: 8 }}>
+                      <PhotoUpload listingId={id} kind="PROOF" source="CAMERA" label="📷 Add this proof" onUploaded={(imageId) => provideProof.mutate({ proofId: p.id, imageId })} />
+                    </div>
                   </li>
                 ))}
               </ul>
-              <p className="kb-muted">Add proofs from the mobile app, or skip and go to offers now.</p>
+              <p className="kb-muted">Add the proofs above, or skip and go to offers now.</p>
               <Button variant="ghost" onClick={() => skipProofs.mutate()} disabled={skipProofs.isPending}>{skipProofs.isPending ? 'Skipping…' : 'Skip proofs'}</Button>
             </>
           ) : null}

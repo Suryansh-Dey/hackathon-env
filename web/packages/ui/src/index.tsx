@@ -2,6 +2,8 @@
 export * from './format';
 export { AuthProvider, useAuth } from './auth';
 export { Providers, useApi, apiBaseUrl } from './query';
+export { PhotoUpload } from './photo';
+export type { PhotoUploadProps } from './photo';
 
 import type { ReactNode, ButtonHTMLAttributes } from 'react';
 

@@ -1,5 +1,5 @@
 'use client';
-import { Badge, Button, Card, ErrorNote, Field, LadderBadge, Spinner, formatRange, formatWeight, useApi, useAuth } from '@kabados/ui';
+import { Badge, Button, Card, ErrorNote, Field, LadderBadge, PhotoUpload, Spinner, formatRange, formatWeight, useApi, useAuth } from '@kabados/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -237,8 +237,26 @@ export default function NewListing() {
         </Card>
       ) : (
         <>
-          {/* Step 3 — items */}
-          <Card title="3. Add items">
+          {/* Step 3 — photos */}
+          <Card title="3. Add photos">
+            <p className="kb-muted">Take or upload a wide shot of everything, then close-ups of valuable items. Clear photos get better AI estimates and higher offers. Faces are blurred and location data removed before any vendor sees them.</p>
+            <div className="kb-row">
+              <PhotoUpload listingId={listingId!} kind="WIDE" source="CAMERA" label="📷 Take photo" onUploaded={() => listing.refetch()} />
+              <PhotoUpload listingId={listingId!} kind="WIDE" source="GALLERY" label="Upload from gallery" onUploaded={() => listing.refetch()} />
+            </div>
+            {listing.data && listing.data.images.length > 0 ? (
+              <div className="kb-row" style={{ marginTop: 12 }}>
+                {listing.data.images.map((im) =>
+                  im.thumb_url || im.url ? <img key={im.id} src={im.thumb_url ?? im.url ?? ''} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8 }} /> : null,
+                )}
+              </div>
+            ) : (
+              <p className="kb-muted" style={{ marginTop: 8 }}>No photos yet.</p>
+            )}
+          </Card>
+
+          {/* Step 4 — items */}
+          <Card title="4. Add items">
             {taxonomy.isLoading ? <Spinner /> : null}
             {rows.length === 0 ? <p className="kb-muted">Add each kind of scrap with a rough weight. You can adjust at pickup.</p> : null}
             <ul className="kb-list">
@@ -278,7 +296,7 @@ export default function NewListing() {
           </Card>
 
           {/* Step 4 — AI itemization (optional) */}
-          <Card title="4. AI check (optional)">
+          <Card title="5. AI check (optional)">
             <p className="kb-muted">Let KabadOS read your photos and description to itemize and verify. This can raise your verification level and the price.</p>
             <div className="kb-between">
               <Button variant="ghost" onClick={() => analyze.mutate()} disabled={analyze.isPending || analyzing}>
@@ -302,7 +320,7 @@ export default function NewListing() {
           </Card>
 
           {/* Step 5 — price suggestion */}
-          <Card title="5. Suggested price">
+          <Card title="6. Suggested price">
             {suggestion.isLoading ? <Spinner /> : null}
             {suggestion.data ? (
               suggestion.data.low != null && suggestion.data.high != null ? (
@@ -317,7 +335,7 @@ export default function NewListing() {
           </Card>
 
           {/* Step 6 — publish */}
-          <Card title="6. Publish">
+          <Card title="7. Publish">
             <p className="kb-muted">Publishing shows your lot to verified vendors nearby. You will compare their offers before accepting any.</p>
             <Button onClick={() => publish.mutate()} disabled={publish.isPending || analyzing}>{publish.isPending ? 'Publishing…' : 'Publish listing'}</Button>
           </Card>
