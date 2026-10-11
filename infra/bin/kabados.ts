@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { App } from 'aws-cdk-lib';
 import { envFromContext, prefix } from '../lib/config.js';
+import { DataStack } from '../lib/data-stack.js';
 import { GithubOidcStack } from '../lib/github-oidc-stack.js';
 
 const app = new App();
@@ -12,6 +13,12 @@ new GithubOidcStack(app, `${prefix(config)}-github-oidc`, {
   env,
   config,
   description: 'KabadOS: GitHub Actions OIDC deploy role',
+});
+
+new DataStack(app, `${prefix(config)}-data`, {
+  env,
+  config,
+  description: 'KabadOS: DynamoDB tables and S3 buckets (PLAN.md §16)',
 });
 
 app.synth();
