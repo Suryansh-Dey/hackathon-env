@@ -1,0 +1,27 @@
+# Standalone workspace: the webview deps shouldn't burden the backend workspace or CI.
+[workspace]
+
+[package]
+name = "kabados-transporter"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "UNLICENSED"
+publish = false
+
+[dependencies]
+kabados-domain = { path = "../../crates/domain" }
+kabados-pricing = { path = "../../crates/pricing" }
+kabados-client = { path = "../../crates/client" }
+dioxus = { version = "0.7", features = ["desktop"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+
+[features]
+# `dx bundle --platform android` compiles with this; the Kotlin bridge (PLAN §8.2)
+# supplies FCM, CameraX, foreground service, Keystore, Chime and Play Integrity.
+android = []

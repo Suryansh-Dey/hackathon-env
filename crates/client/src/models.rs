@@ -6,12 +6,12 @@ use kabados_domain::geo::LatLng;
 use kabados_domain::job::Job;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Availability {
     pub on_duty: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DeviceReg {
     pub device_id: String,
     pub platform: String,
@@ -21,7 +21,7 @@ pub struct DeviceReg {
     pub integrity_token: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Position {
     pub lat: f64,
     pub lng: f64,
@@ -30,7 +30,7 @@ pub struct Position {
     pub accuracy_m: Option<f64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct JobOfferView {
     pub job: Job,
     pub vendor_name: String,
@@ -39,14 +39,14 @@ pub struct JobOfferView {
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExactAddress {
     pub location: LatLng,
     pub text: String,
     pub landmark: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct JobView {
     pub job: Job,
     pub deal_status: kabados_domain::deal::DealStatus,
@@ -57,7 +57,7 @@ pub struct JobView {
 }
 
 /// Dev-only sign-in response (local server).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DevToken {
     pub token: String,
     pub sub: String,
@@ -65,7 +65,7 @@ pub struct DevToken {
 }
 
 /// Public client config (`GET /v1/public/config`).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ClientConfig {
     pub env: String,
     pub otp_enabled: bool,
