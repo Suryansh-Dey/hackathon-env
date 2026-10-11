@@ -97,7 +97,8 @@ async fn process_image(ctx: &WorkerCtx, listing_id: &ListingId, ver: u32, image_
     let mut processed = downscale(&decoded, PROCESSED_MAX);
     meta.faces_blurred = blur_faces(&mut processed, &faces);
     let processed_bytes = encode_jpeg(&processed)?;
-    let thumb_bytes = encode_jpeg(&downscale(&decoded, THUMB_MAX))?;
+    // From the blurred copy: vendors see thumbnails too.
+    let thumb_bytes = encode_jpeg(&downscale(&processed, THUMB_MAX))?;
 
     // Perceptual hash + cross-seller near-duplicate check.
     let (raw_hash, bands) = phash_bands(&processed_bytes);
