@@ -22,7 +22,7 @@ serde_json.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
 tracing.workspace = true
 futures.workspace = true
 async-trait.workspace = true
@@ -38,6 +38,7 @@ aws-config.workspace = true
 aws-sdk-sqs.workspace = true
 aws-sdk-eventbridge.workspace = true
 aws-sdk-sfn.workspace = true
+axum.workspace = true
 
 [lints]
 workspace = true

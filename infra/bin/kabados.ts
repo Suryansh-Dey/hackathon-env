@@ -2,6 +2,7 @@
 import { App } from 'aws-cdk-lib';
 import { envFromContext, prefix } from '../lib/config.js';
 import { AsyncStack } from '../lib/async-stack.js';
+import { ComputeStack } from '../lib/compute-stack.js';
 import { WebStack } from '../lib/web-stack.js';
 import { DataStack } from '../lib/data-stack.js';
 import { GithubOidcStack } from '../lib/github-oidc-stack.js';
@@ -17,16 +18,24 @@ new GithubOidcStack(app, `${prefix(config)}-github-oidc`, {
   description: 'KabadOS: GitHub Actions OIDC deploy role',
 });
 
-new DataStack(app, `${prefix(config)}-data`, {
+const data = new DataStack(app, `${prefix(config)}-data`, {
   env,
   config,
   description: 'KabadOS: DynamoDB tables and S3 buckets (PLAN.md §16)',
 });
 
-new AsyncStack(app, `${prefix(config)}-async`, {
+const asyncStack = new AsyncStack(app, `${prefix(config)}-async`, {
   env,
   config,
   description: 'KabadOS: EventBridge bus, SQS work queues, Scheduler (PLAN.md §17.3)',
+});
+
+new ComputeStack(app, `${prefix(config)}-compute`, {
+  env,
+  config,
+  data,
+  async: asyncStack,
+  description: 'KabadOS: combined API Lambda, worker Lambdas and the HTTP API (PLAN.md §15.1, §17)',
 });
 
 new WebStack(app, `${prefix(config)}-web`, {
