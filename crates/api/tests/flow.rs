@@ -235,6 +235,28 @@ async fn platform_payment_goes_through_signed_webhook() {
 }
 
 #[tokio::test]
+async fn items_can_be_resaved_with_their_ids() {
+    let api = Api::new();
+    let (seller, lid) = seller_with_listing(&api, "+919876522222").await;
+    let l = api.ok(Method::GET, &format!("/v1/listings/{lid}"), &seller, None).await;
+    let items: Vec<Value> = l["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| json!({"id": i["id"], "category_id": i["category_id"], "grade": i["grade"], "quantity": i["quantity"], "est_weight_g": 12000}))
+        .collect();
+    // Keep the first item (by id), drop the second, add a new one.
+    let body = json!({"items": [items[0].clone(), {"category_id": "paper.cardboard", "quantity": 1, "est_weight_g": 5000}]});
+    let v = api.ok(Method::PATCH, &format!("/v1/listings/{lid}/items"), &seller, Some(body)).await;
+    let after = v["items"].as_array().unwrap();
+    assert_eq!(after.len(), 2);
+    assert!(after.iter().any(|i| i["id"] == items[0]["id"] && i["est_weight_g"] == 12000), "{v}");
+    let dup = json!({"items": [items[0].clone(), items[0].clone()]});
+    let (s, _) = api.call(Method::PATCH, &format!("/v1/listings/{lid}/items"), Some(&seller), Some(dup)).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn post_without_idempotency_key_is_rejected_and_openapi_is_served() {
     let api = Api::new();
     let t = api.token("+919876511111").await;

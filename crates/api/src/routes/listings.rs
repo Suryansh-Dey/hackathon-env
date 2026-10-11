@@ -26,7 +26,7 @@ use kabados_domain::user::Role;
 use kabados_domain::{Grams, Paise};
 use kabados_integrations::blob::PresignedUpload;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use utoipa::ToSchema;
 
 pub const LISTING_TTL_DAYS: i64 = 14;
@@ -367,7 +367,13 @@ pub async fn replace_items(
         b = load_bundle(&st, &id).await?;
     }
     let ver = b.listing.data.current_version.max(ver);
-    let mut ops: Vec<TxOp> = b.items.iter().map(|r| st.db.delete_item_op(&id, ver, &r.data.id)).collect();
+    // Kept items are overwritten in place: a transaction can't delete and put the same key.
+    let kept: BTreeSet<&ItemId> = items.iter().map(|i| &i.id).collect();
+    if kept.len() != items.len() {
+        return Err(ApiError::bad("each item id may appear only once"));
+    }
+    let mut ops: Vec<TxOp> =
+        b.items.iter().filter(|r| !kept.contains(&r.data.id)).map(|r| st.db.delete_item_op(&id, ver, &r.data.id)).collect();
     for i in &items {
         ops.push(st.db.item_op(&id, ver, i)?);
     }
