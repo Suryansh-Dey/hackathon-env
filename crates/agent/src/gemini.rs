@@ -110,11 +110,26 @@ fn usage_of(resp: &GeminiResponse) -> Option<Usage> {
     })
 }
 
-fn map_error(e: GeminiResponseError) -> ModelError {
+/// Removes the API key from any text. `gemini-client-api` sends the key as a
+/// URL query parameter, and reqwest errors include the URL.
+pub fn scrub(msg: &str, api_key: &str) -> String {
+    let mut out = if api_key.len() >= 8 { msg.replace(api_key, "<redacted>") } else { msg.to_string() };
+    while let Some(i) = out.find("key=") {
+        let rest = &out[i + 4..];
+        let end = rest.find(|c: char| c == '&' || c == ')' || c == ' ' || c == '"').unwrap_or(rest.len());
+        if rest[..end] == *"<redacted>" {
+            break;
+        }
+        out.replace_range(i + 4..i + 4 + end, "<redacted>");
+    }
+    out
+}
+
+fn map_error(e: GeminiResponseError, api_key: &str) -> ModelError {
     match e {
         GeminiResponseError::StatusNotOk(err) => {
             let code = err.error.code.as_u16();
-            let msg = format!("{code} {:?}: {}", err.error.status, err.error.message);
+            let msg = scrub(&format!("{code} {:?}: {}", err.error.status, err.error.message), api_key);
             match code {
                 429 => ModelError::RateLimited(msg),
                 500..=599 => ModelError::Server(msg),
@@ -122,15 +137,14 @@ fn map_error(e: GeminiResponseError) -> ModelError {
             }
         }
         GeminiResponseError::ReqwestError(e) => {
-            if let Some(status) = e.status() {
-                let msg = format!("{status}: {e}");
-                return match status.as_u16() {
-                    429 => ModelError::RateLimited(msg),
-                    500..=599 => ModelError::Server(msg),
-                    _ => ModelError::Client(msg),
-                };
+            let status = e.status();
+            let msg = scrub(&e.without_url().to_string(), api_key);
+            match status.map(|s| s.as_u16()) {
+                Some(429) => ModelError::RateLimited(msg),
+                Some(500..=599) => ModelError::Server(msg),
+                Some(_) => ModelError::Client(msg),
+                None => ModelError::Transport(msg),
             }
-            ModelError::Transport(e.to_string())
         }
         GeminiResponseError::NothingToRespond => ModelError::InvalidInput("nothing to respond to".into()),
     }
@@ -170,7 +184,7 @@ impl ModelClient for GeminiModel {
         let ai = self.client(&req.model, &req.system, req.thinking).set_json_mode(req.schema.clone());
         let mut session = Session::new(2).set_remember_reply(false);
         session.ask_parts(parts);
-        let resp = ai.ask(&mut session).await.map_err(map_error)?;
+        let resp = ai.ask(&mut session).await.map_err(|e| map_error(e, &self.api_key))?;
         check_finish(&resp)?;
         let text = resp.get_chat().get_text_no_think("");
         if text.trim().is_empty() {
@@ -220,7 +234,7 @@ impl ModelClient for GeminiModel {
                 function_calling_config: Some(FunctionCallingConfig { mode: Some(FunctionCallingMode::Any), allowed_function_names: None }),
             });
         }
-        let resp = ai.ask(&mut session).await.map_err(map_error)?;
+        let resp = ai.ask(&mut session).await.map_err(|e| map_error(e, &self.api_key))?;
         check_finish(&resp)?;
         let chat = resp.get_chat();
         let raw = serde_json::to_value(chat.parts()).ok();
@@ -248,6 +262,18 @@ mod tests {
         assert_eq!(v["thinkingBudget"], 0);
         let v = serde_json::to_value(thinking_config("gemini-2.5-pro", true)).unwrap();
         assert_eq!(v["thinkingBudget"], -1);
+    }
+
+    #[test]
+    fn errors_never_contain_the_api_key() {
+        let msg =
+            "error sending request for url (https://generativelanguage.googleapis.com/v1beta/models/m:generateContent?key=AQ.secret123456)";
+        let s = scrub(msg, "AQ.secret123456");
+        assert!(!s.contains("secret"), "{s}");
+        // Unknown keys in a URL are scrubbed too.
+        let s = scrub("GET https://x/y?alt=sse&key=OTHERKEY987654 failed", "unrelated-key-1");
+        assert!(!s.contains("OTHERKEY"), "{s}");
+        assert!(s.contains("alt=sse"));
     }
 
     #[test]
