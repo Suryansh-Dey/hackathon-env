@@ -24,6 +24,8 @@ describe('GithubOidcStack', () => {
                 'token.actions.githubusercontent.com:sub': [
                   'repo:Suryansh-Dey/hackathon-env:ref:refs/heads/main',
                   'repo:Suryansh-Dey/hackathon-env:environment:dev',
+                  'repo:Suryansh-Dey@140788315/hackathon-env@1414080614:ref:refs/heads/main',
+                  'repo:Suryansh-Dey@140788315/hackathon-env@1414080614:environment:dev',
                 ],
               },
             },

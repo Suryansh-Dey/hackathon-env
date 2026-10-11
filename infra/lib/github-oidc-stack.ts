@@ -17,7 +17,8 @@ export class GithubOidcStack extends Stack {
 
   constructor(scope: Construct, id: string, props: GithubOidcStackProps) {
     super(scope, id, props);
-    const { owner, repo, branch } = props.config.github;
+    const { owner, repo, branch, ownerId, repoId } = props.config.github;
+    const immutable = `${owner}@${ownerId}/${repo}@${repoId}`;
 
     const provider = new iam.OpenIdConnectProvider(this, 'GitHubOidc', {
       url: 'https://token.actions.githubusercontent.com',
@@ -34,6 +35,8 @@ export class GithubOidcStack extends Stack {
           'token.actions.githubusercontent.com:sub': [
             `repo:${owner}/${repo}:ref:refs/heads/${branch}`,
             `repo:${owner}/${repo}:environment:${props.config.name}`,
+            `repo:${immutable}:ref:refs/heads/${branch}`,
+            `repo:${immutable}:environment:${props.config.name}`,
           ],
         },
       }),

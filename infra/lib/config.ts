@@ -9,7 +9,11 @@ export interface EnvConfig {
   readonly drRegion?: string;
   /** Prod-grade protections (deletion protection, retained data, WAF Bot Control). */
   readonly hardened: boolean;
-  readonly github: { readonly owner: string; readonly repo: string; readonly branch: string };
+  /**
+   * GitHub repository. The numeric ids match the repo's immutable OIDC subject
+   * (`repo:<owner>@<ownerId>/<repo>@<repoId>:…`), which survives renames and can't be reused.
+   */
+  readonly github: { readonly owner: string; readonly repo: string; readonly branch: string; readonly ownerId: number; readonly repoId: number };
   /** Deployed site origins (CloudFront), used for CORS and absolute links such as receipt verification. */
   readonly sites?: { readonly seller: string; readonly vendor: string; readonly ops: string; readonly public: string };
 }
@@ -22,7 +26,7 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     account: ACCOUNT,
     region: 'ap-south-1',
     hardened: false,
-    github: { owner: 'Suryansh-Dey', repo: 'hackathon-env', branch: 'main' },
+    github: { owner: 'Suryansh-Dey', repo: 'hackathon-env', branch: 'main', ownerId: 140788315, repoId: 1414080614 },
     // From the kabados-dev-web stack outputs.
     sites: {
       seller: 'https://d1kn7g0l0y77vz.cloudfront.net',
@@ -36,7 +40,7 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     account: ACCOUNT,
     region: 'ap-south-1',
     hardened: true,
-    github: { owner: 'Suryansh-Dey', repo: 'hackathon-env', branch: 'main' },
+    github: { owner: 'Suryansh-Dey', repo: 'hackathon-env', branch: 'main', ownerId: 140788315, repoId: 1414080614 },
   },
   prod: {
     name: 'prod',
@@ -44,7 +48,7 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     region: 'ap-south-1',
     drRegion: 'ap-south-2',
     hardened: true,
-    github: { owner: 'Suryansh-Dey', repo: 'hackathon-env', branch: 'main' },
+    github: { owner: 'Suryansh-Dey', repo: 'hackathon-env', branch: 'main', ownerId: 140788315, repoId: 1414080614 },
   },
 };
 
