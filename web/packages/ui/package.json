@@ -1,0 +1,20 @@
+{
+  "name": "@kabados/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./format": "./src/format.ts",
+    "./auth": "./src/auth.tsx",
+    "./query": "./src/query.tsx",
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@kabados/api-client": "*",
+    "@tanstack/react-query": "^5.104.0"
+  },
+  "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" },
+  "devDependencies": { "@types/react": "^19.0.0", "typescript": "^5.9.0" }
+}

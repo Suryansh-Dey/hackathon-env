@@ -1,0 +1,14 @@
+{
+  "name": "kabados-web",
+  "private": true,
+  "workspaces": ["packages/*", "seller", "vendor", "ops", "public"],
+  "scripts": {
+    "gen:api": "openapi-typescript ../openapi/kabados.json -o packages/api-client/src/schema.d.ts",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspace seller && npm run build --workspace vendor && npm run build --workspace ops && npm run build --workspace public"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.0"
+  }
+}

@@ -10,3 +10,6 @@ cdk.out/
 /.local/
 /apps/transporter/dist/
 /.claude/worktrees/
+web/**/.next/
+web/**/out/
+web/**/next-env.d.ts

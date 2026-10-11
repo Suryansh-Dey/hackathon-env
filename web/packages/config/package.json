@@ -1,0 +1,7 @@
+{
+  "name": "@kabados/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./next": "./next.base.mjs", "./tsconfig.json": "./tsconfig.base.json" }
+}
