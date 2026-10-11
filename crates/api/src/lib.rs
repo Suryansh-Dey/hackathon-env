@@ -49,3 +49,11 @@ pub async fn run_lambda(router: Router<AppState>) -> Result<(), lambda_http::Err
     let app = router.layer(axum::middleware::from_fn_with_state(state.clone(), idem::idempotency)).with_state(state);
     lambda_http::run(app).await
 }
+
+/// Serves the whole API (every context) as one combined Lambda behind the
+/// HTTP API `$default` route — the approved deployment packaging.
+pub async fn run_lambda_combined() -> Result<(), lambda_http::Error> {
+    kabados_runtime::telemetry::init();
+    let state = AppState::from_env().await.map_err(|e| lambda_http::Error::from(e.to_string()))?;
+    lambda_http::run(app(state)).await
+}

@@ -65,7 +65,7 @@ fn dev_claims(parts: &Parts) -> Option<HashMap<String, String>> {
 
 /// Extracts the caller's claims (used by the idempotency layer as its scope).
 pub fn caller_from_parts(parts: &Parts, st: &AppState) -> Option<Caller> {
-    let claims = lambda_claims(parts).or_else(|| if st.cfg.is_local() { dev_claims(parts) } else { None })?;
+    let claims = lambda_claims(parts).or_else(|| if !st.cfg.is_prod() { dev_claims(parts) } else { None })?;
     Caller::from_claims(&claims, st.cfg.staff_user_pool_id.as_deref())
 }
 

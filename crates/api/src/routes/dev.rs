@@ -75,7 +75,7 @@ pub struct TokenReq {
 
 /// Local sign-in without Cognito: `{"phone": "+9198…"}` → bearer token.
 pub async fn token(State(st): State<AppState>, Json(b): Json<TokenReq>) -> ApiResult<Json<serde_json::Value>> {
-    if !st.cfg.is_local() {
+    if st.cfg.is_prod() {
         return Err(ApiError::NotFound("route"));
     }
     let phone = normalize_in_phone(&b.phone).ok_or_else(|| ApiError::bad("invalid phone"))?;
