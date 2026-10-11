@@ -32,8 +32,23 @@ fn non_prod(st: &AppState) -> ApiResult<()> {
     if st.cfg.is_prod() { Err(ApiError::NotFound("route")) } else { Ok(()) }
 }
 
-pub async fn inbox(State(st): State<AppState>) -> ApiResult<Json<Vec<InboxMessage>>> {
+/// Staff tokens, seeding and the inbox need the admin key from Secrets
+/// Manager (`/kabados/{env}/admin_key`). A local stack without one is open.
+async fn require_admin(st: &AppState, given: Option<&str>) -> ApiResult<()> {
+    match st.secrets.try_get("admin_key", "KABADOS_ADMIN_KEY").await {
+        Some(key) if given.is_some_and(|g| st.hasher.verify("admin-key", g, &st.hasher.hash("admin-key", &key))) => Ok(()),
+        None if st.cfg.is_local() => Ok(()),
+        _ => Err(ApiError::forbidden("admin key required")),
+    }
+}
+
+fn admin_header(headers: &HeaderMap) -> Option<&str> {
+    headers.get("x-admin-key").and_then(|v| v.to_str().ok())
+}
+
+pub async fn inbox(State(st): State<AppState>, headers: HeaderMap) -> ApiResult<Json<Vec<InboxMessage>>> {
     non_prod(&st)?;
+    require_admin(&st, admin_header(&headers)).await?;
     Ok(Json(st.db.inbox(&st.cfg.env, 100).await?))
 }
 
@@ -71,21 +86,29 @@ pub struct TokenReq {
     pub phone: String,
     #[serde(default)]
     pub staff: bool,
+    #[serde(default)]
+    pub admin_key: Option<String>,
 }
 
-/// Local sign-in without Cognito: `{"phone": "+9198…"}` → bearer token.
+/// Phone-only sign-in without Cognito: `{"phone": "+9198…"}` → bearer token.
+/// Staff tokens also need `admin_key`.
 pub async fn token(State(st): State<AppState>, Json(b): Json<TokenReq>) -> ApiResult<Json<serde_json::Value>> {
     if st.cfg.is_prod() {
         return Err(ApiError::NotFound("route"));
     }
+    if b.staff {
+        require_admin(&st, b.admin_key.as_deref()).await?;
+    }
     let phone = normalize_in_phone(&b.phone).ok_or_else(|| ApiError::bad("invalid phone"))?;
     let sub = format!("dev-{}", &st.hasher.phone(&phone)[..16]);
-    Ok(Json(serde_json::json!({"token": Caller::dev_token(&sub, &phone, b.staff), "sub": sub, "phone": phone})))
+    let token = Caller::dev_token(&st.hasher, &sub, &phone, b.staff);
+    Ok(Json(serde_json::json!({"token": token, "sub": sub, "phone": phone})))
 }
 
 /// Demo vendors with published rate cards around Delhi and Bengaluru.
-pub async fn seed(State(st): State<AppState>) -> ApiResult<Json<serde_json::Value>> {
+pub async fn seed(State(st): State<AppState>, headers: HeaderMap) -> ApiResult<Json<serde_json::Value>> {
     non_prod(&st)?;
+    require_admin(&st, admin_header(&headers)).await?;
     let demos = [
         ("+919800000001", "Raju Kabadiwala", "delhi", LatLng { lat: 28.6315, lng: 77.2167 }, false),
         ("+919800000002", "GreenCycle E-Waste (authorized)", "delhi", LatLng { lat: 28.5677, lng: 77.2433 }, true),

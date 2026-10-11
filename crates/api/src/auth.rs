@@ -1,6 +1,7 @@
 //! Caller identity. On Lambda, API Gateway's JWT authorizer has already
 //! validated the Cognito access token; we read its claims from the request
-//! context. Locally, `Bearer dev.<base64url claims>` tokens are accepted.
+//! context. Outside prod, `Bearer dev.<base64url claims>.<hmac>` tokens from
+//! `/dev/token` are accepted.
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -12,6 +13,7 @@ use chrono::Utc;
 use kabados_db::Record;
 use kabados_domain::ids::UserId;
 use kabados_domain::user::{Role, UserProfile, normalize_in_phone};
+use kabados_runtime::crypto::Hasher;
 use std::collections::{BTreeSet, HashMap};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -41,12 +43,17 @@ impl Caller {
         Some(Caller { sub, username, phone, groups, staff })
     }
 
-    /// Creates a local development token for these claims.
-    pub fn dev_token(sub: &str, phone: &str, staff: bool) -> String {
+    /// Creates a development token for these claims, signed with the pepper so
+    /// it can't be forged on an internet-facing stack.
+    pub fn dev_token(hasher: &Hasher, sub: &str, phone: &str, staff: bool) -> String {
         let claims = serde_json::json!({"sub": sub, "username": phone, "kabados:staff": staff.to_string()});
-        format!("dev.{}", URL_SAFE_NO_PAD.encode(claims.to_string()))
+        let payload = URL_SAFE_NO_PAD.encode(claims.to_string());
+        let sig = hasher.hash(DEV_TOKEN_PURPOSE, &payload);
+        format!("dev.{payload}.{sig}")
     }
 }
+
+const DEV_TOKEN_PURPOSE: &str = "dev-token";
 
 fn lambda_claims(parts: &Parts) -> Option<HashMap<String, String>> {
     use lambda_http::request::RequestContext;
@@ -56,16 +63,19 @@ fn lambda_claims(parts: &Parts) -> Option<HashMap<String, String>> {
     }
 }
 
-fn dev_claims(parts: &Parts) -> Option<HashMap<String, String>> {
+fn dev_claims(parts: &Parts, hasher: &Hasher) -> Option<HashMap<String, String>> {
     let h = parts.headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
-    let token = h.strip_prefix("Bearer ")?.strip_prefix("dev.")?;
-    let v: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(token).ok()?).ok()?;
+    let (payload, sig) = h.strip_prefix("Bearer ")?.strip_prefix("dev.")?.split_once('.')?;
+    if !hasher.verify(DEV_TOKEN_PURPOSE, payload, sig) {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()?;
     Some(v.as_object()?.iter().map(|(k, v)| (k.clone(), v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string()))).collect())
 }
 
 /// Extracts the caller's claims (used by the idempotency layer as its scope).
 pub fn caller_from_parts(parts: &Parts, st: &AppState) -> Option<Caller> {
-    let claims = lambda_claims(parts).or_else(|| if !st.cfg.is_prod() { dev_claims(parts) } else { None })?;
+    let claims = lambda_claims(parts).or_else(|| if !st.cfg.is_prod() { dev_claims(parts, &st.hasher) } else { None })?;
     Caller::from_claims(&claims, st.cfg.staff_user_pool_id.as_deref())
 }
 

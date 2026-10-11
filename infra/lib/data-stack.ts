@@ -1,5 +1,6 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 import { EnvConfig, prefix } from './config.js';
@@ -18,12 +19,21 @@ export class DataStack extends Stack {
   readonly mediaBucket: s3.Bucket;
   readonly documentsBucket: s3.Bucket;
   readonly receiptsBucket: s3.Bucket;
+  /** Envelope key for field-level encryption of phones, addresses and documents (PLAN.md §20.1). */
+  readonly fieldKey: kms.Key;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
     const { config } = props;
     const name = prefix(config);
     const removalPolicy = config.hardened ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY;
+
+    this.fieldKey = new kms.Key(this, 'FieldKey', {
+      alias: `${name}-fields`,
+      description: 'KabadOS field-level encryption (data keys per container)',
+      enableKeyRotation: true,
+      removalPolicy,
+    });
 
     const str = (n: string): dynamodb.Attribute => ({ name: n, type: dynamodb.AttributeType.STRING });
 
@@ -54,8 +64,9 @@ export class DataStack extends Stack {
       return table;
     };
 
-    // Matches kabados_db::store::Table: core has GSIs; core/ledger/audit stream; ephemeral has TTL.
-    makeTable('core', { gsis: true, stream: true });
+    // Matches kabados_db::store::Table: core has GSIs; core/ledger/audit stream; core (outbox,
+    // notify, job offers) and ephemeral expire via TTL.
+    makeTable('core', { gsis: true, stream: true, ttl: true });
     makeTable('ledger', { stream: true });
     makeTable('chat', {});
     makeTable('ephemeral', { ttl: true });

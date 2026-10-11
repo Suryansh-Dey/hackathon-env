@@ -91,12 +91,14 @@ impl AppState {
         };
         let sealer: Arc<dyn Sealer> = match &cfg.kms_key_id {
             Some(k) => Arc::new(KmsSealer::new(aws_sdk_kms::Client::new(&sdk), k.clone())),
-            None if !cfg.is_prod() => Arc::new(LocalSealer::new(&format!("kabados-{}", cfg.env))),
-            None => anyhow::bail!("KMS_KEY_ID is required in prod"),
+            None if cfg.is_local() => Arc::new(LocalSealer::new(&format!("kabados-{}", cfg.env))),
+            None => anyhow::bail!("KMS_KEY_ID is required outside local"),
         };
+        // The pepper keys phone lookups, OTP hashes, dev tokens and receipt
+        // signatures, so a deployed stack never falls back to a guessable one.
         let pepper = match secrets.get("pepper", "KABADOS_PEPPER").await {
             Ok(p) => p,
-            Err(_) if !cfg.is_prod() => format!("kabados-{}-pepper", cfg.env),
+            Err(_) if cfg.is_local() => format!("kabados-{}-pepper", cfg.env),
             Err(e) => return Err(e),
         };
         let ix = Integrations::deployed(&cfg, &sdk, db.clone(), &secrets).await?;

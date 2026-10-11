@@ -10,6 +10,8 @@ export interface EnvConfig {
   /** Prod-grade protections (deletion protection, retained data, WAF Bot Control). */
   readonly hardened: boolean;
   readonly github: { readonly owner: string; readonly repo: string; readonly branch: string };
+  /** Deployed site origins (CloudFront), used for CORS and absolute links such as receipt verification. */
+  readonly sites?: { readonly seller: string; readonly vendor: string; readonly ops: string; readonly public: string };
 }
 
 const ACCOUNT = process.env.CDK_DEFAULT_ACCOUNT ?? '975050124872';
@@ -21,6 +23,13 @@ export const ENVS: Record<EnvName, EnvConfig> = {
     region: 'ap-south-1',
     hardened: false,
     github: { owner: 'Suryansh-Dey', repo: 'hackathon-env', branch: 'main' },
+    // From the kabados-dev-web stack outputs.
+    sites: {
+      seller: 'https://d1kn7g0l0y77vz.cloudfront.net',
+      vendor: 'https://dh36dlei05x8v.cloudfront.net',
+      ops: 'https://d271ufmc8uwk5y.cloudfront.net',
+      public: 'https://d18zzn1na86duz.cloudfront.net',
+    },
   },
   staging: {
     name: 'staging',

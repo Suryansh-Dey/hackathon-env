@@ -49,6 +49,8 @@ export class ComputeStack extends Stack {
       QUEUE_MEDIA_URL: async.mediaQueue.queueUrl,
       QUEUE_ANALYSIS_URL: async.analysisQueue.queueUrl,
       PUBLIC_BASE_URL: config.name === 'prod' ? 'https://kabados.in' : 'https://dev.kabados.in',
+      PUBLIC_SITE_URL: config.sites?.public ?? '',
+      KMS_KEY_ID: data.fieldKey.keyArn,
       // Provider modes (external_api.md §21): AI live on Gemini, Razorpay test, rest mocked.
       AI_MODE: 'live',
       PAYMENTS_MODE: 'sandbox',
@@ -96,6 +98,7 @@ export class ComputeStack extends Stack {
       );
 
     const grantData = (fn: lambda.Function, write = true) => {
+      data.fieldKey.grantEncryptDecrypt(fn);
       for (const t of Object.values(tables)) (write ? t.grantReadWriteData(fn) : t.grantReadData(fn));
       mediaBucket.grantReadWrite(fn);
       documentsBucket.grantReadWrite(fn);
@@ -116,7 +119,10 @@ export class ComputeStack extends Stack {
       corsPreflight: {
         allowHeaders: ['authorization', 'content-type', 'idempotency-key'],
         allowMethods: [apigw.CorsHttpMethod.ANY],
-        allowOrigins: config.name === 'prod' ? ['https://kabados.in'] : ['*'],
+        // Only the KabadOS sites (plus local dev servers outside prod) may call the API from a browser.
+        allowOrigins: config.name === 'prod'
+          ? ['https://kabados.in']
+          : [...Object.values(config.sites ?? {}), 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:3003', 'http://localhost:3004'],
         maxAge: Duration.days(1),
       },
     });
