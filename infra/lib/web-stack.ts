@@ -16,10 +16,27 @@ export interface WebStackProps extends StackProps {
 }
 
 /**
+ * Viewer-request rewrite for the Next.js static export (`trailingSlash: true`):
+ * S3's REST endpoint behind OAC has no directory index, so `/signin/` must be
+ * fetched as `signin/index.html`. Paths with a file extension pass through.
+ */
+export const INDEX_REWRITE_CODE = `function handler(event) {
+  var request = event.request;
+  var uri = request.uri;
+  if (uri.charAt(uri.length - 1) === '/') {
+    request.uri = uri + 'index.html';
+  } else if (!/\\.[^\\/]*$/.test(uri)) {
+    request.uri = uri + '/index.html';
+  }
+  return request;
+}`;
+
+/**
  * Static hosting for the four client apps (PLAN.md §15.2): each is a private
- * S3 bucket behind a CloudFront distribution with Origin Access Control and an
- * SPA 404→index fallback. The built `web/<app>/out` is uploaded at deploy time;
- * if an app hasn't been built the stack still deploys (empty bucket).
+ * S3 bucket behind a CloudFront distribution with Origin Access Control. Route
+ * folders resolve to their `index.html`; anything missing gets the app's 404
+ * page. The built `web/<app>/out` is uploaded at deploy time; if an app hasn't
+ * been built the stack still deploys (empty bucket).
  */
 export class WebStack extends Stack {
   readonly urls: Record<string, string> = {};
@@ -28,6 +45,12 @@ export class WebStack extends Stack {
     super(scope, id, props);
     const name = prefix(props.config);
     const removalPolicy = props.config.hardened ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY;
+
+    const indexRewrite = new cloudfront.Function(this, 'IndexRewrite', {
+      comment: 'Map /route/ to /route/index.html for the static export',
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+      code: cloudfront.FunctionCode.fromInline(INDEX_REWRITE_CODE),
+    });
 
     for (const app of ['seller', 'vendor', 'ops', 'public']) {
       const bucket = new s3.Bucket(this, `${app}Bucket`, {
@@ -46,11 +69,12 @@ export class WebStack extends Stack {
           origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+          functionAssociations: [{ function: indexRewrite, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST }],
         },
-        // Static export emits per-route folders; a 403/404 falls back to the SPA shell.
+        // OAC grants GetObject only, so a missing key comes back as 403, not 404.
         errorResponses: [
-          { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: Duration.minutes(5) },
-          { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/404.html', ttl: Duration.minutes(5) },
+          { httpStatus: 403, responseHttpStatus: 404, responsePagePath: '/404.html', ttl: Duration.minutes(1) },
+          { httpStatus: 404, responseHttpStatus: 404, responsePagePath: '/404.html', ttl: Duration.minutes(1) },
         ],
         priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       });
