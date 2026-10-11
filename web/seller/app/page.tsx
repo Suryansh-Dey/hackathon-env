@@ -1,7 +1,8 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, Spinner, formatWeight, useApi, useAuth } from '@kabados/ui';
+import { Button, Card, ErrorNote, Spinner, formatWeight, problemMessage, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
+import { ProfileGate } from './profile';
 
 export default function Home() {
   const { token } = useAuth();
@@ -29,12 +30,13 @@ export default function Home() {
     );
 
   return (
-    <>
+    <ProfileGate>
       <div className="kb-between">
         <h1 className="kb-h1">My listings</h1>
         <a href="/new/"><Button>Sell scrap</Button></a>
       </div>
       {listings.isLoading ? <Spinner /> : null}
+      {listings.error ? <ErrorNote>{problemMessage(listings.error, 'Could not load your listings')}</ErrorNote> : null}
       {listings.data && listings.data.length === 0 ? <p className="kb-empty">No listings yet. Tap “Sell scrap” to start.</p> : null}
       <ul className="kb-list">
         {listings.data?.map((l) => (
@@ -50,6 +52,6 @@ export default function Home() {
           </li>
         ))}
       </ul>
-    </>
+    </ProfileGate>
   );
 }

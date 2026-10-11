@@ -1,6 +1,6 @@
 'use client';
-import { Badge, Button, Card, ErrorNote, Field, LadderBadge, PhotoUpload, Spinner, formatRange, formatWeight, stars, useApi, useAuth } from '@kabados/ui';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { Badge, Button, Card, ErrorNote, Field, LadderBadge, PhotoUpload, Spinner, formatPaise, formatRange, formatWeight, problemMessage, problemStatus, stars, useApi, useAuth } from '@kabados/ui';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -11,6 +11,11 @@ function useListingId() {
   }, []);
   return id;
 }
+
+// Mirrors ListingStatus::is_publishable / is_editable and the withdraw rule (crates/domain listing.rs).
+const PUBLISHABLE = ['DRAFT', 'READY', 'NEEDS_INPUT', 'EXPIRED', 'CANCELLED'];
+const EDITABLE = [...PUBLISHABLE, 'PUBLISHED'];
+const NOT_WITHDRAWABLE = ['COMPLETED', 'PARTIALLY_COMPLETED', 'WITHDRAWN', 'BLOCKED', 'RESERVED'];
 
 const VERDICT: Record<string, { text: string; tone: 'good' | 'warn' | 'hazard' }> = {
   SUPPORTED: { text: 'Supported', tone: 'good' },
@@ -26,7 +31,13 @@ export default function ListingDetail() {
   useEffect(() => setReady(true), []);
   const id = useListingId();
 
+  const qc = useQueryClient();
   const [err, setErr] = useState<string | null>(null);
+  // Accepting a platform-paid offer needs a UPI ID on the account.
+  const [needUpi, setNeedUpi] = useState(false);
+  const [askRupees, setAskRupees] = useState('');
+  const [askReason, setAskReason] = useState('');
+  const [askSaved, setAskSaved] = useState(false);
   const [counterFor, setCounterFor] = useState<string | null>(null);
   const [counterRupees, setCounterRupees] = useState('');
   const [counterNote, setCounterNote] = useState('');
@@ -79,7 +90,7 @@ export default function ListingDetail() {
       return data;
     },
     onSuccess: () => listing.refetch(),
-    onError: (e) => setErr(e instanceof Error ? e.message : 'Could not skip proofs'),
+    onError: (e) => setErr(problemMessage(e, 'Could not skip proofs')),
   });
 
   const provideProof = useMutation({
@@ -90,12 +101,13 @@ export default function ListingDetail() {
       return data;
     },
     onSuccess: () => listing.refetch(),
-    onError: (e) => setErr(e instanceof Error ? e.message : 'Could not submit proof'),
+    onError: (e) => setErr(problemMessage(e, 'Could not submit proof')),
   });
 
   const accept = useMutation({
     mutationFn: async (offerId: string) => {
       setErr(null);
+      setNeedUpi(false);
       const { error } = await api.POST(`/v1/offers/${offerId}:accept` as '/v1/offers/{id}:accept', { body: { slot: null } });
       if (error) throw error;
       // Accept returns no body; the deal id now lives on the refreshed listing.
@@ -107,7 +119,11 @@ export default function ListingDetail() {
       if (dealId) router.push(`/deal/?id=${dealId}`);
       else router.push('/deals/');
     },
-    onError: (e) => setErr(e instanceof Error ? e.message : 'Could not accept the offer'),
+    onError: (e) => {
+      const msg = problemMessage(e, 'Could not accept the offer');
+      setNeedUpi(problemStatus(e) === 409 && /upi/i.test(msg));
+      setErr(msg);
+    },
   });
 
   const counter = useMutation({
@@ -125,8 +141,59 @@ export default function ListingDetail() {
       setCounterNote('');
       offers.refetch();
     },
-    onError: (e) => setErr(e instanceof Error ? e.message : 'Could not send counter'),
+    onError: (e) => setErr(problemMessage(e, 'Could not send counter')),
   });
+
+  const listingAction = useMutation({
+    mutationFn: async (verb: 'publish' | 'withdraw') => {
+      setErr(null);
+      const { data, error } = await api.POST(`/v1/listings/${id}:${verb}` as '/v1/listings/{id}:publish');
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(['listing', id], data);
+      qc.invalidateQueries({ queryKey: ['my-listings'] });
+      offers.refetch();
+    },
+    onError: (e, verb) => setErr(problemMessage(e, verb === 'publish' ? 'Could not publish' : 'Could not withdraw')),
+  });
+
+  const askingPrice = useMutation({
+    mutationFn: async (clear: boolean) => {
+      setErr(null);
+      setAskSaved(false);
+      let body: { asking_price?: number; claim_reason?: string | null; clear_asking_price?: boolean };
+      if (clear) {
+        body = { clear_asking_price: true };
+      } else {
+        const rupees = Number(askRupees);
+        if (!askRupees.trim() || !Number.isFinite(rupees) || rupees <= 0) throw new Error('Enter your asking price in rupees');
+        body = { asking_price: Math.round(rupees * 100), claim_reason: askReason.trim() || null };
+      }
+      const { data, error } = await api.PATCH(`/v1/listings/${id}` as '/v1/listings/{id}', { body });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data, clear) => {
+      qc.setQueryData(['listing', id], data);
+      setAskSaved(true);
+      if (clear) {
+        setAskRupees('');
+        setAskReason('');
+      }
+      offers.refetch();
+    },
+    onError: (e) => setErr(problemMessage(e, 'Could not save your asking price')),
+  });
+
+  // Prefill the asking-price form from the current version once loaded.
+  const currentAsk = listing.data?.version.asking_price ?? null;
+  const currentReason = listing.data?.version.claim_reason ?? '';
+  useEffect(() => {
+    if (currentAsk != null) setAskRupees(String(currentAsk / 100));
+    setAskReason(currentReason ?? '');
+  }, [currentAsk, currentReason]);
 
   if (!ready || id === null) return <Spinner />;
   if (!token)
@@ -136,21 +203,52 @@ export default function ListingDetail() {
       </Card>
     );
   if (listing.isLoading) return <Spinner />;
-  if (listing.error) return <ErrorNote>Could not load this listing.</ErrorNote>;
+  if (listing.error) return <ErrorNote>{problemMessage(listing.error, 'Could not load this listing.')}</ErrorNote>;
   if (!listing.data) return <p className="kb-empty">Listing not found.</p>;
 
   const l = listing.data;
   const cats = taxonomy.data?.categories ?? [];
   const catName = (cid: string) => cats.find((c) => c.id === cid)?.name ?? cid;
   const openProofs = l.proof_requests.filter((p) => p.status === 'OPEN');
+  const status = l.listing.status;
+  const canPublish = PUBLISHABLE.includes(status);
+  const canEdit = EDITABLE.includes(status);
+  const canWithdraw = !NOT_WITHDRAWABLE.includes(status);
 
   return (
     <>
       <div className="kb-between">
         <h1 className="kb-h1">{l.listing.title}</h1>
-        <Badge>{l.listing.status.toLowerCase()}</Badge>
+        <Badge tone={status === 'PUBLISHED' ? 'good' : 'neutral'}>{status.replace(/_/g, ' ').toLowerCase()}</Badge>
       </div>
-      {err ? <ErrorNote>{err}</ErrorNote> : null}
+      {err ? (
+        <ErrorNote>
+          {err}
+          {needUpi ? <> <a href="/account/">Open Account to add your UPI ID →</a></> : null}
+        </ErrorNote>
+      ) : null}
+      {l.deal_id ? (
+        <p><a href={`/deal/?id=${l.deal_id}`}><Button>View pickup</Button></a></p>
+      ) : null}
+      {canPublish || canWithdraw || canEdit ? (
+        <div className="kb-row" style={{ marginBottom: 16 }}>
+          {canPublish ? (
+            <Button onClick={() => listingAction.mutate('publish')} disabled={listingAction.isPending}>{listingAction.isPending && listingAction.variables === 'publish' ? 'Publishing…' : 'Publish'}</Button>
+          ) : null}
+          {canEdit ? <a href={`/new/?id=${l.listing.id}`}><Button variant="ghost">Edit items & photos</Button></a> : null}
+          {canWithdraw ? (
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (window.confirm('Withdraw this listing? Vendors will no longer see it.')) listingAction.mutate('withdraw');
+              }}
+              disabled={listingAction.isPending}
+            >
+              {listingAction.isPending && listingAction.variables === 'withdraw' ? 'Withdrawing…' : 'Withdraw'}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <Card title="Photos">
         {l.images.length === 0 ? <p className="kb-muted">No photos on this listing.</p> : (
@@ -237,8 +335,37 @@ export default function ListingDetail() {
         ) : null}
       </Card>
 
+      {canEdit ? (
+        <Card title="Your asking price (optional)">
+          {currentAsk != null ? (
+            <p>
+              Asking <strong>{formatPaise(currentAsk)}</strong>
+              {currentReason ? <span className="kb-muted"> — “{currentReason}”</span> : null}
+            </p>
+          ) : (
+            <p className="kb-muted">No asking price set — vendors bid freely. Set one if you know your lot is worth more; offers that meet it are marked.</p>
+          )}
+          <div className="kb-grid kb-grid-2">
+            <Field label="Asking price (₹)">
+              <input className="kb-input" type="number" min={1} inputMode="decimal" value={askRupees} onChange={(e) => setAskRupees(e.target.value)} placeholder="e.g. 1500" />
+            </Field>
+            <Field label="Reason (optional)">
+              <input className="kb-input" value={askReason} onChange={(e) => setAskReason(e.target.value)} maxLength={500} placeholder="e.g. laptop works, bought 2021" />
+            </Field>
+          </div>
+          {askSaved && !askingPrice.isPending ? <p className="kb-muted">Saved.</p> : null}
+          <div className="kb-row">
+            <Button onClick={() => askingPrice.mutate(false)} disabled={askingPrice.isPending}>{askingPrice.isPending && askingPrice.variables === false ? 'Saving…' : 'Save asking price'}</Button>
+            {currentAsk != null ? (
+              <Button variant="ghost" onClick={() => askingPrice.mutate(true)} disabled={askingPrice.isPending}>Clear</Button>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
+
       <Card title="Offers">
         {offers.isLoading ? <Spinner /> : null}
+        {offers.error ? <ErrorNote>{problemMessage(offers.error, 'Could not load offers')}</ErrorNote> : null}
         {offers.data && offers.data.length === 0 ? <p className="kb-empty">No offers yet. Vendors nearby are reviewing your lot.</p> : null}
         <ul className="kb-list">
           {offers.data?.map((o) => {

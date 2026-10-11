@@ -68,3 +68,9 @@ a { color: var(--kb-primary); }
 .kb-list li:last-child { border-bottom: none; }
 .kb-h1 { font-size: 1.5rem; margin: 8px 0 16px; }
 .kb-empty { text-align: center; color: var(--kb-muted); padding: 40px 16px; }
+@media print {
+  :root { --kb-bg: #fff; --kb-surface: #fff; --kb-text: #000; --kb-muted: #444; --kb-border: #ccc; }
+  .kb-header, .kb-no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+  .kb-card { box-shadow: none; border-color: #ccc; break-inside: avoid; }
+}

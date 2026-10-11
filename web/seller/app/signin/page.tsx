@@ -1,11 +1,9 @@
 'use client';
-import { Button, Card, ErrorNote, Field, apiBaseUrl, useAuth } from '@kabados/ui';
-import { useRouter } from 'next/navigation';
+import { Button, Card, ErrorNote, Field, apiBaseUrl, problemMessage, useAuth } from '@kabados/ui';
 import { useState } from 'react';
 
 export default function SignIn() {
   const { setToken } = useAuth();
-  const router = useRouter();
   const [phone, setPhone] = useState('+91');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -20,12 +18,13 @@ export default function SignIn() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ phone }),
       });
-      if (!res.ok) throw new Error('Could not sign in with that number');
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw data ?? new Error('Could not sign in with that number');
       setToken(data.token, data.sub);
-      router.push('/');
+      // Full reload so no cached data from a previous account survives.
+      window.location.assign('/');
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Sign-in failed');
+      setErr(problemMessage(e, 'Could not sign in with that number'));
     } finally {
       setBusy(false);
     }

@@ -72,7 +72,7 @@ export function PhotoUpload({ listingId, kind = 'WIDE', source = 'GALLERY', proo
           method: 'POST',
           headers: { authorization: `Bearer ${token}`, 'idempotency-key': `imgc-${image_id}` },
         });
-        if (!complete.ok) throw new Error('Could not finalize the upload');
+        if (!complete.ok) throw new Error((await complete.json().catch(() => ({})))?.detail ?? 'Could not finalize the upload');
         setPreviews((p) => [...p, URL.createObjectURL(blob)]);
         onUploaded?.(image_id);
       }

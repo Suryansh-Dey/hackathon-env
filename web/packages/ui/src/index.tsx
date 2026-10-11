@@ -1,5 +1,7 @@
 // Shared presentational components. Minimal, dependency-free, theme-aware.
 export * from './format';
+export { problemMessage, problemStatus, isProblem } from './problem';
+export type { ProblemLike } from './problem';
 export { AuthProvider, useAuth } from './auth';
 export { Providers, useApi, apiBaseUrl } from './query';
 export { PhotoUpload } from './photo';

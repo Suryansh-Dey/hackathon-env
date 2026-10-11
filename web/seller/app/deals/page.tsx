@@ -1,5 +1,5 @@
 'use client';
-import { Badge, Button, Card, ErrorNote, Spinner, formatPaise, useApi, useAuth } from '@kabados/ui';
+import { Button, Card, ErrorNote, Spinner, formatPaise, problemMessage, useApi, useAuth } from '@kabados/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -41,7 +41,7 @@ export default function Deals() {
     <>
       <h1 className="kb-h1">Pickups</h1>
       {deals.isLoading ? <Spinner /> : null}
-      {deals.error ? <ErrorNote>Could not load your pickups.</ErrorNote> : null}
+      {deals.error ? <ErrorNote>{problemMessage(deals.error, 'Could not load your pickups.')}</ErrorNote> : null}
       {deals.data && deals.data.length === 0 ? <p className="kb-empty">No pickups yet. Accept an offer to start one.</p> : null}
       <ul className="kb-list">
         {deals.data?.map((d, i) => {

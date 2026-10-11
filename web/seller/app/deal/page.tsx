@@ -1,5 +1,5 @@
 'use client';
-import { Badge, Button, Card, ErrorNote, Field, Spinner, formatPaise, formatWeight, stars, useApi, useAuth } from '@kabados/ui';
+import { Badge, Button, Card, ErrorNote, Field, Spinner, formatDate, formatPaise, formatWeight, problemMessage, stars, useApi, useAuth } from '@kabados/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -11,6 +11,19 @@ function useDealId() {
   return id;
 }
 
+// The public site that verifies Green Receipts (the API returns an absolute link).
+const PUBLIC_SITE = process.env.NEXT_PUBLIC_PUBLIC_SITE_URL || 'https://d18zzn1na86duz.cloudfront.net';
+
+function verifyUrl(p: string): string {
+  if (/^https?:\/\//i.test(p)) return p;
+  // Older API builds return a relative "/receipt?id=…&sig=…" path.
+  const q = p.includes('?') ? p.slice(p.indexOf('?')) : '';
+  return `${PUBLIC_SITE}/verify/${q}`;
+}
+
+// Seller may remove lines or accept a re-grade only at pickup, before confirming weights.
+const LINE_EDITABLE = ['AT_PICKUP', 'WEIGHED', 'LINE_REGRADED'];
+
 export default function DealDetail() {
   const { token } = useAuth();
   const api = useApi();
@@ -21,6 +34,7 @@ export default function DealDetail() {
   const [err, setErr] = useState<string | null>(null);
   const [ratingStars, setRatingStars] = useState(5);
   const [ratingComment, setRatingComment] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const deal = useQuery({
     queryKey: ['deal', id],
@@ -60,7 +74,18 @@ export default function DealDetail() {
       if (error) throw error;
     },
     onSuccess: () => deal.refetch(),
-    onError: (e) => setErr(e instanceof Error ? e.message : 'Could not complete that action'),
+    onError: (e) => setErr(problemMessage(e, 'Could not complete that action')),
+  });
+
+  const lineAction = useMutation({
+    mutationFn: async ({ n, verb }: { n: number; verb: 'accept-regrade' | 'remove' }) => {
+      setErr(null);
+      // No body: these seller actions take none (the route's body is for :regrade).
+      const { error } = await api.POST(`/v1/deals/${id}/lines/${n}:${verb}` as '/v1/deals/{id}/lines/{n}:regrade', { body: undefined as never });
+      if (error) throw error;
+    },
+    onSuccess: () => deal.refetch(),
+    onError: (e) => setErr(problemMessage(e, 'Could not update that item')),
   });
 
   const rate = useMutation({
@@ -70,7 +95,7 @@ export default function DealDetail() {
       if (error) throw error;
     },
     onSuccess: () => deal.refetch(),
-    onError: (e) => setErr(e instanceof Error ? e.message : 'Could not submit your rating'),
+    onError: (e) => setErr(problemMessage(e, 'Could not submit your rating')),
   });
 
   if (!ready || id === null) return <Spinner />;
@@ -81,7 +106,7 @@ export default function DealDetail() {
       </Card>
     );
   if (deal.isLoading) return <Spinner />;
-  if (deal.error) return <ErrorNote>Could not load this pickup.</ErrorNote>;
+  if (deal.error) return <ErrorNote>{problemMessage(deal.error, 'Could not load this pickup.')}</ErrorNote>;
   if (!deal.data) return <p className="kb-empty">Pickup not found.</p>;
 
   const d = deal.data;
@@ -91,6 +116,20 @@ export default function DealDetail() {
   const paid = status === 'PAID' || status === 'PAID_DIRECT';
   const cats = taxonomy.data?.categories ?? [];
   const catName = (cid: string) => cats.find((c) => c.id === cid)?.name ?? cid;
+  const linesEditable = LINE_EDITABLE.includes(status);
+  const liveLines = d.lines.filter((ln) => ln.status !== 'REMOVED').length;
+  const receiptUrl = receipt.data ? verifyUrl(receipt.data.verify_path) : null;
+
+  async function copyLink() {
+    if (!receiptUrl) return;
+    try {
+      await navigator.clipboard.writeText(receiptUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt('Copy this link', receiptUrl);
+    }
+  }
 
   return (
     <>
@@ -98,6 +137,7 @@ export default function DealDetail() {
         <h1 className="kb-h1">{d.listing.title}</h1>
         <Badge tone={settled ? 'good' : 'neutral'}>{status.replace(/_/g, ' ').toLowerCase()}</Badge>
       </div>
+      <div className="kb-no-print">
       {err ? <ErrorNote>{err}</ErrorNote> : null}
 
       <Card title="Summary">
@@ -125,8 +165,19 @@ export default function DealDetail() {
             <li key={ln.n} className="kb-between">
               <span>
                 <strong>{catName(ln.category_id)}</strong>{ln.grade ? ` · ${ln.grade}` : ''}
+                {ln.regraded_from ? <span className="kb-muted"> (re-graded from {catName(ln.regraded_from)})</span> : null}
                 <br />
-                <span className="kb-muted">{ln.quantity} × · {ln.weighed_g != null ? formatWeight(ln.weighed_g) : 'not weighed yet'} · {ln.status.toLowerCase()}</span>
+                <span className="kb-muted">{ln.quantity} × · {ln.weighed_g != null ? formatWeight(ln.weighed_g) : 'not weighed yet'} · {ln.status.replace(/_/g, ' ').toLowerCase()}</span>
+                {linesEditable && ln.status !== 'REMOVED' ? (
+                  <span className="kb-row" style={{ marginTop: 6 }}>
+                    {ln.status === 'REGRADE_PENDING' ? (
+                      <Button onClick={() => lineAction.mutate({ n: ln.n, verb: 'accept-regrade' })} disabled={lineAction.isPending}>Accept new grade</Button>
+                    ) : null}
+                    {liveLines > 1 ? (
+                      <Button variant="ghost" onClick={() => lineAction.mutate({ n: ln.n, verb: 'remove' })} disabled={lineAction.isPending}>Remove from deal</Button>
+                    ) : null}
+                  </span>
+                ) : null}
               </span>
               {ln.amount != null ? <span className="kb-price">{formatPaise(ln.amount)}</span> : null}
             </li>
@@ -135,6 +186,12 @@ export default function DealDetail() {
       </Card>
 
       {/* Status-driven seller actions */}
+      {status === 'LINE_REGRADED' ? (
+        <Card title="Item re-graded at pickup">
+          <p className="kb-muted">The vendor changed the grade of an item. Accept the new grade or remove the item (keep it) above, then confirm the weights.</p>
+        </Card>
+      ) : null}
+
       {status === 'WEIGHED' ? (
         <Card title="Confirm weights">
           <p className="kb-muted">The vendor has weighed your items. Confirm to lock the final amount.</p>
@@ -152,20 +209,52 @@ export default function DealDetail() {
         </Card>
       ) : null}
 
-      {/* Green Receipt */}
+      </div>
+
+      {/* Green Receipt (the only part that prints) */}
       {settled ? (
-        <Card title="Green Receipt">
+        <Card title="♻ Green Receipt">
           {receipt.isLoading ? <Spinner /> : null}
+          {receipt.error ? <ErrorNote>{problemMessage(receipt.error, 'Could not load your receipt')}</ErrorNote> : null}
           {receipt.data ? (
             <>
+              <p className="kb-muted">
+                Receipt {receipt.data.receipt.id} · issued {formatDate(receipt.data.receipt.issued_at)}
+                <br />
+                Recycled with {receipt.data.receipt.vendor_name}{receipt.data.receipt.city ? `, ${receipt.data.receipt.city}` : ''}
+                {receipt.data.receipt.vendor_authorized_for_hazardous ? ' · authorized for hazardous waste' : ''}
+              </p>
+              <ul className="kb-list">
+                {receipt.data.receipt.lines.map((rl, i) => (
+                  <li key={i} className="kb-between">
+                    <span>{rl.category_name} {rl.hazardous ? <Badge tone="hazard">Hazardous</Badge> : null}</span>
+                    <span>{formatWeight(rl.weight)}</span>
+                  </li>
+                ))}
+              </ul>
               <div className="kb-between"><span className="kb-muted">Total weight</span><strong>{formatWeight(receipt.data.receipt.total_weight)}</strong></div>
               <div className="kb-between"><span className="kb-muted">Total amount</span><strong className="kb-price">{formatPaise(receipt.data.receipt.total_amount)}</strong></div>
               <div className="kb-between"><span className="kb-muted">CO₂e avoided</span><strong>{formatWeight(receipt.data.receipt.co2e_avoided_g)}</strong></div>
+              <p className="kb-muted">Emission factors: {receipt.data.receipt.emission_factor_source}</p>
               <p className="kb-muted">{receipt.data.receipt.disclaimer}</p>
+              {receiptUrl ? (
+                <>
+                  <p style={{ wordBreak: 'break-all' }}>
+                    Verify: <a href={receiptUrl} target="_blank" rel="noopener noreferrer">{receiptUrl}</a>
+                  </p>
+                  <div className="kb-row kb-no-print">
+                    <Button variant="ghost" onClick={copyLink}>{copied ? 'Copied ✓' : 'Copy link'}</Button>
+                    <a href={receiptUrl} target="_blank" rel="noopener noreferrer"><Button variant="ghost">Open verify page</Button></a>
+                    <Button onClick={() => window.print()}>Print / Save PDF</Button>
+                  </div>
+                </>
+              ) : null}
             </>
           ) : null}
         </Card>
       ) : null}
+
+      <div className="kb-no-print">
 
       {/* Rating */}
       <Card title="Rate this pickup">
@@ -187,6 +276,7 @@ export default function DealDetail() {
           </>
         )}
       </Card>
+      </div>
     </>
   );
 }
