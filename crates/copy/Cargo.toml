@@ -1,0 +1,10 @@
+[package]
+name = "kabados-copy"
+description = "Generated UI copy for Rust clients (transporter app), compiled from copy/en.yaml (PLAN.md §15.5)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
