@@ -139,6 +139,39 @@ pub fn clamp01(x: f32) -> f32 {
     if x.is_finite() { x.clamp(0.0, 1.0) } else { 0.0 }
 }
 
+// AI-facing schemas avoid float fields: constrained decoding can loop on digits
+// ("0.95000…"), producing unparseable numbers. Integers and decimal strings are
+// converted here by deterministic code.
+
+/// `[x0, y0, x1, y1]` in thousandths of the image size → normalized box.
+pub fn bbox_permille(v: &[u32]) -> Option<[f32; 4]> {
+    let f: Vec<f32> = v.iter().map(|x| *x as f32 / 1000.0).collect();
+    valid_bbox(&f)
+}
+
+/// Confidence percentage (0–100) → `0.0..=1.0`.
+pub fn pct_to_unit(p: u32) -> f32 {
+    p.min(100) as f32 / 100.0
+}
+
+/// Parses a decimal written as text: "14", "14.5", "₹650", "+3%", "-5 %", "1,200".
+pub fn parse_decimal(s: &str) -> Option<f64> {
+    let t: String = s
+        .trim()
+        .trim_start_matches('₹')
+        .trim_start_matches("Rs.")
+        .trim_start_matches("Rs")
+        .trim_end_matches('%')
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != ',')
+        .collect();
+    let t = t.strip_prefix('+').unwrap_or(&t);
+    if t.is_empty() || t.len() > 16 {
+        return None;
+    }
+    t.parse::<f64>().ok().filter(|v| v.is_finite())
+}
+
 /// Finds the text between `start` and the next blank line / end (used by mock responders to read prompts).
 pub fn section<'a>(text: &'a str, start: &str) -> Option<&'a str> {
     let i = text.find(start)? + start.len();
@@ -173,6 +206,20 @@ mod tests {
         assert_eq!(valid_bbox(&[0.1, 0.2, 0.5, 0.7]), Some([0.1, 0.2, 0.5, 0.7]));
         assert_eq!(valid_bbox(&[0.5, 0.2, 0.1, 0.7]), None);
         assert_eq!(valid_bbox(&[0.1, 0.2]), None);
+        assert_eq!(bbox_permille(&[100, 200, 500, 700]), Some([0.1, 0.2, 0.5, 0.7]));
+        assert_eq!(bbox_permille(&[100, 200, 1500, 700]), None);
+        assert_eq!(pct_to_unit(150), 1.0);
+    }
+
+    #[test]
+    fn decimals_from_text() {
+        assert_eq!(parse_decimal("14.5"), Some(14.5));
+        assert_eq!(parse_decimal("₹650"), Some(650.0));
+        assert_eq!(parse_decimal("+3%"), Some(3.0));
+        assert_eq!(parse_decimal("-5 %"), Some(-5.0));
+        assert_eq!(parse_decimal("1,200"), Some(1200.0));
+        assert_eq!(parse_decimal("0.95000000000000000000000000001"), None, "runaway digits are rejected");
+        assert_eq!(parse_decimal("abc"), None);
     }
 
     #[test]

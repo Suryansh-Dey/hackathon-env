@@ -62,8 +62,8 @@ pub struct AttributeAi {
 pub struct EvidenceAi {
     /// ID of the image, exactly as labelled, e.g. "img_...".
     pub image_id: String,
-    /// Normalized [x0, y0, x1, y1] box, or empty.
-    pub bbox: Vec<f32>,
+    /// Box [x0, y0, x1, y1] in thousandths of the image size (integers 0-1000), or empty.
+    pub bbox: Vec<u32>,
 }
 
 /// One scrap item (or a group of identical items).
@@ -87,8 +87,8 @@ pub struct ItemAi {
     /// Short safe-handling tip for hazardous items.
     pub handling: Option<String>,
     pub evidence: Vec<EvidenceAi>,
-    /// 0 to 1.
-    pub confidence: f32,
+    /// Confidence as an integer percentage, 0-100.
+    pub confidence_pct: u32,
     /// Short note on what was seen, without prices.
     pub note: Option<String>,
 }
@@ -228,7 +228,7 @@ pub fn postprocess(ai: ItemizeAi, images: &[ImageInput], tax: &Taxonomy) -> Item
                 if !ids.contains(&e.image_id) {
                     return None;
                 }
-                Some(Evidence { image_id: e.image_id.parse().ok()?, bbox: valid_bbox(&e.bbox) })
+                Some(Evidence { image_id: e.image_id.parse().ok()?, bbox: bbox_permille(&e.bbox) })
             })
             .collect();
         let mut attributes = BTreeMap::new();
@@ -249,7 +249,7 @@ pub fn postprocess(ai: ItemizeAi, images: &[ImageInput], tax: &Taxonomy) -> Item
             plausible_weight,
             hazard,
             evidence,
-            confidence: clamp01(it.confidence),
+            confidence: pct_to_unit(it.confidence_pct),
             note: strip_price_talk(it.note),
         });
     }
@@ -311,7 +311,7 @@ mod tests {
             hazard_class: None,
             handling: None,
             evidence: vec![],
-            confidence: 1.4,
+            confidence_pct: 140,
             note: None,
         }
     }
@@ -354,7 +354,7 @@ mod tests {
         let mut it = ai_item("metal.copper");
         it.grade = Some("shiny".into());
         it.evidence = vec![
-            EvidenceAi { image_id: img.image_id.to_string(), bbox: vec![0.1, 0.1, 0.5, 0.5] },
+            EvidenceAi { image_id: img.image_id.to_string(), bbox: vec![100, 100, 500, 500] },
             EvidenceAi { image_id: ImageId::new().to_string(), bbox: vec![] },
         ];
         it.note = Some("Looks worth ₹500".into());

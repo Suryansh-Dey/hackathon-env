@@ -43,10 +43,24 @@ pub struct RuleLineAi {
     /// Grade ID, only if the vendor named one.
     pub grade: Option<String>,
     pub unit: UnitAi,
-    /// Price in rupees per kg or per piece, exactly as stated.
-    pub price_rupees: f64,
-    /// Minimum weight in kg for this price (e.g. "above 5 kilo" → 5).
-    pub min_weight_kg: Option<f64>,
+    /// Price in rupees per kg or per piece, exactly as stated, written as a decimal string, e.g. "650" or "14.5".
+    pub price_rupees: String,
+    /// Minimum weight in kg for this price as a decimal string (e.g. "above 5 kilo" → "5"), or null.
+    pub min_weight_kg: Option<String>,
+}
+
+impl RuleLineAi {
+    pub fn price(&self) -> Option<f64> {
+        parse_decimal(&self.price_rupees)
+    }
+
+    pub fn min_weight(&self) -> Option<Option<f64>> {
+        match &self.min_weight_kg {
+            None => Some(None),
+            Some(s) if s.trim().is_empty() => Some(None),
+            Some(s) => parse_decimal(s).map(Some),
+        }
+    }
 }
 
 /// A percentage change to existing prices, e.g. "all metals +3%".
@@ -55,8 +69,14 @@ pub struct RuleLineAi {
 pub struct AdjustmentAi {
     /// Category glob such as "metal.*" or an exact category ID.
     pub category_glob: String,
-    /// Signed percentage, e.g. 3 or -5.
-    pub percent: f64,
+    /// Signed percentage as a decimal string, e.g. "3" or "-5".
+    pub percent: String,
+}
+
+impl AdjustmentAi {
+    pub fn pct(&self) -> Option<f64> {
+        parse_decimal(&self.percent)
+    }
 }
 
 #[gemini_schema]
@@ -123,11 +143,11 @@ fn validate_with(tax: &Taxonomy) -> impl Fn(&RulesAi) -> Result<(), String> + Se
             return Err("no changes found; extract the price lines, exclusions or adjustments, or ask a question in ambiguities".into());
         }
         for l in &ai.lines {
-            if !l.price_rupees.is_finite() || l.price_rupees <= 0.0 || l.price_rupees > 1_000_000.0 {
-                return Err(format!("price for {} must be a positive number of rupees", l.category_id));
+            if !l.price().is_some_and(|p| p > 0.0 && p <= 1_000_000.0) {
+                return Err(format!("price_rupees for {} must be a positive decimal like \"650\" or \"14.5\"", l.category_id));
             }
-            if l.min_weight_kg.is_some_and(|w| !w.is_finite() || w <= 0.0) {
-                return Err(format!("min_weight_kg for {} must be positive", l.category_id));
+            if !l.min_weight().is_some_and(|w| w.is_none_or(|w| w > 0.0)) {
+                return Err(format!("min_weight_kg for {} must be a positive decimal or null", l.category_id));
             }
         }
         let unknown: Vec<&str> = ai.lines.iter().map(|l| l.category_id.as_str()).filter(|c| tax.get(c).is_none()).collect();
@@ -135,8 +155,8 @@ fn validate_with(tax: &Taxonomy) -> impl Fn(&RulesAi) -> Result<(), String> + Se
             return Err(format!("unknown category IDs {unknown:?}; use taxonomy IDs"));
         }
         for a in &ai.adjustments {
-            if !a.percent.is_finite() || a.percent.abs() > 50.0 {
-                return Err("adjustments must be between -50 and 50 percent".into());
+            if !a.pct().is_some_and(|p| p.abs() <= 50.0) {
+                return Err("adjustment percent must be a decimal between -50 and 50, e.g. \"3\"".into());
             }
         }
         Ok(())
@@ -203,20 +223,27 @@ pub fn compose(ai: RulesAi, input: &RulesAuthorInput<'_>) -> RulesDraftResult {
             ambiguities.push(format!("Couldn't apply the change to {:?}; which materials did you mean?", a.category_glob));
             continue;
         }
+        let Some(pct) = a.pct() else {
+            ambiguities.push(format!("Couldn't read the percentage {:?}.", a.percent));
+            continue;
+        };
         let mut hit = false;
         for l in draft.lines.iter_mut().filter(|l| taxonomy::glob_matches(&a.category_glob, &l.category_id)) {
             hit = true;
-            l.price_per_kg_paise = l.price_per_kg_paise.map(|p| adjust(p, a.percent));
-            l.price_per_piece_paise = l.price_per_piece_paise.map(|p| adjust(p, a.percent));
+            l.price_per_kg_paise = l.price_per_kg_paise.map(|p| adjust(p, pct));
+            l.price_per_piece_paise = l.price_per_piece_paise.map(|p| adjust(p, pct));
         }
         if !hit {
-            ambiguities
-                .push(format!("No current prices match {:?}, so the {}% change had nothing to apply to.", a.category_glob, a.percent));
+            ambiguities.push(format!("No current prices match {:?}, so the {pct}% change had nothing to apply to.", a.category_glob));
         }
     }
     for l in ai.lines {
         let Some(cat) = tax.get(&l.category_id) else {
             ambiguities.push(format!("Couldn't match {:?} to a category; please pick it from the list.", l.category_id));
+            continue;
+        };
+        let (Some(price), Some(min_weight)) = (l.price(), l.min_weight()) else {
+            ambiguities.push(format!("Couldn't read the price for {}; please type it again.", cat.name));
             continue;
         };
         let grade = match l.grade {
@@ -238,8 +265,8 @@ pub fn compose(ai: RulesAi, input: &RulesAuthorInput<'_>) -> RulesDraftResult {
                 if cat.unit == Unit::Kg { "kg" } else { "piece" }
             ));
         }
-        let paise = rupees_to_paise(l.price_rupees);
-        let min_weight_g = l.min_weight_kg.map(|kg| (kg * 1000.0).round() as i64);
+        let paise = rupees_to_paise(price);
+        let min_weight_g = min_weight.map(|kg| (kg * 1000.0).round() as i64);
         let line = RuleLine {
             category_id: cat.id.clone(),
             grade,
@@ -432,10 +459,10 @@ pub fn heuristic_parse(instruction: &str, now: DateTime<Utc>) -> RulesAi {
         }
         if let Some(c) = pct_re().captures(&clause) {
             let sign = match c[1].trim().to_ascii_lowercase().as_str() {
-                "-" | "reduce" | "decrease" | "cut" | "down" => -1.0,
-                _ => 1.0,
+                "-" | "reduce" | "decrease" | "cut" | "down" => "-",
+                _ => "",
             };
-            let pct: f64 = c[2].parse().unwrap_or(0.0) * sign;
+            let pct = format!("{sign}{}", &c[2]);
             let glob = keywords::find_family(&clause)
                 .filter(|_| lower.contains("all") || keywords::find_category(&clause).is_none())
                 .map(|f| format!("{f}.*"))
@@ -447,10 +474,10 @@ pub fn heuristic_parse(instruction: &str, now: DateTime<Utc>) -> RulesAi {
         }
         let Some((cat, pos)) = keywords::find_category(&clause) else { continue };
         let tail = &clause[pos..];
-        let min_weight_kg = min_weight_re().captures(tail).and_then(|c| c[1].parse::<f64>().ok());
+        let min_weight_kg = min_weight_re().captures(tail).map(|c| c[1].to_string());
         let tail_wo_min = min_weight_re().replace(tail, "");
         let Some(p) = price_re().captures_iter(&tail_wo_min).find(|c| c.get(1).is_some()) else { continue };
-        let price_rupees: f64 = p[1].parse().unwrap_or(0.0);
+        let price_rupees = p[1].to_string();
         let piece = p.get(2).is_some() || Taxonomy::seed().get(cat).is_some_and(|c| c.unit == Unit::Piece);
         let mut category_id = cat.to_string();
         if cat == "paper.mixed" && lower.split_whitespace().any(|w| w == "paper") {
@@ -554,7 +581,7 @@ mod tests {
         current.modifiers = vec![Modifier::VerifiedBonusPct { min_ladder: kabados_domain::LadderLevel::L2CloseUp, value: 3 }];
         let inp = input("all metals +3% from tomorrow 9am", Some(current), BTreeMap::new());
         let ai = heuristic_parse(&inp.instruction, inp.now);
-        assert_eq!(ai.adjustments, vec![AdjustmentAi { category_glob: "metal.*".into(), percent: 3.0 }]);
+        assert_eq!(ai.adjustments, vec![AdjustmentAi { category_glob: "metal.*".into(), percent: "3".into() }]);
         let r = compose(ai, &inp);
         let price = |c: &str| r.draft.lines.iter().find(|l| l.category_id == c).and_then(|l| l.price_per_kg_paise);
         assert_eq!(price("metal.copper"), Some(66950));
@@ -604,7 +631,7 @@ mod tests {
             category_id: "metal.copper".into(),
             grade: None,
             unit: UnitAi::KG,
-            price_rupees: -5.0,
+            price_rupees: "-5".into(),
             min_weight_kg: None,
         });
         assert!(v(&bad).is_err());

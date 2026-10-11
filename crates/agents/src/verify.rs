@@ -70,8 +70,8 @@ pub struct ClaimAi {
     pub rationale: String,
     /// Image IDs that show the evidence.
     pub evidence_image_ids: Vec<String>,
-    /// 0 to 1.
-    pub confidence: f32,
+    /// Confidence as an integer percentage, 0-100.
+    pub confidence_pct: u32,
 }
 
 /// A specific photo that would raise the evidence level.
@@ -247,7 +247,7 @@ pub fn postprocess(ai: VerifyAi, input: &VerifyInput) -> VerifyOutput {
             ladder_level: level,
             rationale: c.rationale.chars().take(600).collect(),
             evidence,
-            confidence: clamp01(c.confidence),
+            confidence: pct_to_unit(c.confidence_pct),
         });
     }
 
@@ -363,7 +363,7 @@ mod tests {
             ladder_level: level,
             rationale: "The coil is visible.".into(),
             evidence_image_ids: ev,
-            confidence: 0.8,
+            confidence_pct: 80,
         }
     }
 

@@ -94,7 +94,7 @@ fn itemize(req: &JsonRequest) -> Result<String, ModelError> {
                 "hazard_class": Value::Null,
                 "handling": Value::Null,
                 "evidence": first_image.iter().map(|id| json!({"image_id": id, "bbox": []})).collect::<Vec<_>>(),
-                "confidence": 0.6,
+                "confidence_pct": 60,
                 "note": format!("From description: {}", clause.chars().take(60).collect::<String>()),
             }));
         }
@@ -103,7 +103,7 @@ fn itemize(req: &JsonRequest) -> Result<String, ModelError> {
         items.push(json!({
             "category_id": "paper.mixed", "grade": null, "attributes": [], "quantity": 1,
             "weight_min_g": null, "weight_max_g": null, "is_hazardous": false, "hazard_class": null, "handling": null,
-            "evidence": [{"image_id": first_image, "bbox": []}], "confidence": 0.2,
+            "evidence": [{"image_id": first_image, "bbox": []}], "confidence_pct": 20,
             "note": "Offline mock: items could not be identified without the AI model."
         }));
     }
@@ -128,7 +128,7 @@ fn verify(req: &JsonRequest) -> Result<String, ModelError> {
             "ladder_level": if has_images { "L1_PHOTO_CONSISTENT" } else { "L0_CLAIMED" },
             "rationale": if has_images { "The photos are consistent with this item." } else { "No photo shows this item yet." },
             "evidence_image_ids": if has_images { vec![image_ids[0].clone()] } else { vec![] },
-            "confidence": 0.6,
+            "confidence_pct": 60,
         }));
     }
     let extra: Vec<(&str, &str)> = [("seller_description", "seller_description"), ("claim_reason", "claim_reason")]
@@ -154,7 +154,7 @@ fn verify(req: &JsonRequest) -> Result<String, ModelError> {
                 "ladder_level": if has_images { "L1_PHOTO_CONSISTENT" } else { "L0_CLAIMED" },
                 "rationale": "Not enough evidence yet; a closer photo would help.",
                 "evidence_image_ids": if has_images { vec![image_ids[0].clone()] } else { vec![] },
-                "confidence": 0.5,
+                "confidence_pct": 50,
             }));
             proofs.push(json!({"claim_key": key, "shot_type": shot, "instruction": instruction, "benefit": benefit}));
         }
@@ -177,8 +177,8 @@ fn rules(req: &JsonRequest) -> Result<String, ModelError> {
 fn scale(req: &JsonRequest) -> Result<String, ModelError> {
     let decoded = images(&req.parts).first().and_then(|(_, b)| synthetic::decode_scale(b));
     Ok(match decoded {
-        Some(d) => json!({"reading_text": d.text, "unit": d.unit.unwrap_or_else(|| "kg".into()), "display_type": "7-segment", "confidence": 0.95, "display_bbox": []}),
-        None => json!({"reading_text": null, "unit": null, "display_type": "unknown", "confidence": 0.0, "display_bbox": []}),
+        Some(d) => json!({"reading_text": d.text, "unit": d.unit.unwrap_or_else(|| "kg".into()), "display_type": "7-segment", "confidence_pct": 95, "display_bbox": []}),
+        None => json!({"reading_text": null, "unit": null, "display_type": "unknown", "confidence_pct": 0, "display_bbox": []}),
     }
     .to_string())
 }

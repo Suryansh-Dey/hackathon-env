@@ -1,7 +1,7 @@
 //! Agent 6: scale reading (PLAN.md §11.8). On low confidence the driver types
 //! the value and the photo is kept as evidence.
 
-use crate::common::{COMMON_RULES, ImageInput, valid_bbox};
+use crate::common::{COMMON_RULES, ImageInput, bbox_permille, pct_to_unit};
 use gemini_client_api::gemini::utils::{GeminiSchema, gemini_schema};
 use kabados_agent::{AgentResult, AgentRuntime, JsonTask, ModelTier, Part};
 use serde::{Deserialize, Serialize};
@@ -22,10 +22,10 @@ pub struct ScaleAi {
     pub unit: Option<String>,
     /// Display type: "7-segment", "lcd", "analogue" or "unknown".
     pub display_type: Option<String>,
-    /// 0 to 1.
-    pub confidence: f32,
-    /// Normalized [x0, y0, x1, y1] box around the display, or empty.
-    pub display_bbox: Vec<f32>,
+    /// Confidence as an integer percentage, 0-100.
+    pub confidence_pct: u32,
+    /// Box [x0, y0, x1, y1] around the display in thousandths of the image size (integers 0-1000), or empty.
+    pub display_bbox: Vec<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -81,8 +81,8 @@ pub fn to_domain(s: ScaleAi) -> ScaleReading {
         if u == "g" || u == "gm" || u == "grams" { "g".to_string() } else { "kg".to_string() }
     });
     let reading_g = s.reading_text.as_deref().and_then(|t| to_grams(t, unit.as_deref()));
-    let confidence = if reading_g.is_some() { crate::common::clamp01(s.confidence) } else { 0.0 };
-    ScaleReading { reading_g, unit_detected: unit, confidence, display_bbox: valid_bbox(&s.display_bbox) }
+    let confidence = if reading_g.is_some() { pct_to_unit(s.confidence_pct) } else { 0.0 };
+    ScaleReading { reading_g, unit_detected: unit, confidence, display_bbox: bbox_permille(&s.display_bbox) }
 }
 
 pub async fn read_scale(rt: &AgentRuntime, image: &ImageInput) -> AgentResult<ScaleReading> {
@@ -123,12 +123,12 @@ mod tests {
             reading_text: Some("12.3".into()),
             unit: Some("kg".into()),
             display_type: None,
-            confidence: 0.4,
+            confidence_pct: 40,
             display_bbox: vec![],
         });
         assert_eq!(r.reading_g, Some(12_300));
         assert!(r.needs_manual_entry());
-        let none = to_domain(ScaleAi { reading_text: None, unit: None, display_type: None, confidence: 0.9, display_bbox: vec![] });
+        let none = to_domain(ScaleAi { reading_text: None, unit: None, display_type: None, confidence_pct: 90, display_bbox: vec![] });
         assert!(none.needs_manual_entry() && none.confidence == 0.0);
     }
 }
