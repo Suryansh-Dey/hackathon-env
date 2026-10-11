@@ -524,7 +524,11 @@ pub async fn job_event(State(st): State<AppState>, me: Me, Path(id): Path<String
         JobEventKind::Loaded | JobEventKind::Delivered => {
             return Err(ApiError::conflict("loading happens with the seller's handover code; delivery is confirmed by the vendor"));
         }
-        JobEventKind::InTransit | JobEventKind::ArrivedYard if deal.data.status != DealStatus::HandedOver => {
+        // In transit moves the deal to IN_TRANSIT, so arriving at the yard accepts either.
+        JobEventKind::InTransit if deal.data.status != DealStatus::HandedOver => {
+            return Err(ApiError::conflict("collect the goods with the seller's handover code first"));
+        }
+        JobEventKind::ArrivedYard if !matches!(deal.data.status, DealStatus::HandedOver | DealStatus::InTransit) => {
             return Err(ApiError::conflict("collect the goods with the seller's handover code first"));
         }
         _ => {}
