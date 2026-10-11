@@ -50,11 +50,19 @@ pub struct RetryPolicy {
     pub max_retries: u32,
     pub base_delay: Duration,
     pub max_delay: Duration,
+    /// After a per-call timeout on a Pro/Strongest call, retry on the Flash
+    /// model (graceful degradation, PLAN.md §21.4).
+    pub fallback_to_flash_on_timeout: bool,
 }
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        Self { max_retries: 3, base_delay: Duration::from_millis(500), max_delay: Duration::from_secs(8) }
+        Self {
+            max_retries: 3,
+            base_delay: Duration::from_millis(500),
+            max_delay: Duration::from_secs(8),
+            fallback_to_flash_on_timeout: true,
+        }
     }
 }
 
@@ -236,21 +244,41 @@ impl AgentRuntime {
         self.client.provider() == "mock"
     }
 
-    async fn with_retries<R, F, Fut>(&self, agent: &str, attempts: &mut u32, mut call: F) -> Result<R, ModelError>
+    /// Flash fallback for a tier, when enabled and different from the tier's model.
+    fn fallback_for(&self, tier: ModelTier) -> Option<String> {
+        (self.retry.fallback_to_flash_on_timeout && tier != ModelTier::Flash && self.models.flash != self.models.model_for(tier))
+            .then(|| self.models.flash.clone())
+    }
+
+    async fn with_retries<R, F, Fut>(
+        &self,
+        agent: &str,
+        attempts: &mut u32,
+        model: &mut String,
+        fallback: Option<&str>,
+        mut call: F,
+    ) -> Result<R, ModelError>
     where
-        F: FnMut() -> Fut,
+        F: FnMut(String) -> Fut,
         Fut: std::future::Future<Output = Result<R, ModelError>>,
     {
         let mut retry = 0u32;
         loop {
             *attempts += 1;
-            let result = match tokio::time::timeout(self.budgets.call_timeout, call()).await {
+            let result = match tokio::time::timeout(self.budgets.call_timeout, call(model.clone())).await {
                 Ok(r) => r,
-                Err(_) => Err(ModelError::Transport(format!("model call exceeded {:?}", self.budgets.call_timeout))),
+                Err(_) => Err(ModelError::Timeout(format!("{model} exceeded {:?}", self.budgets.call_timeout))),
             };
             match result {
                 Ok(r) => return Ok(r),
                 Err(e) if e.retryable() && retry < self.retry.max_retries => {
+                    if matches!(e, ModelError::Timeout(_))
+                        && let Some(fb) = fallback
+                        && model.as_str() != fb
+                    {
+                        tracing::warn!(agent, from = %model, to = fb, "model call timed out; falling back");
+                        *model = fb.to_string();
+                    }
                     let d = self.retry.delay(retry);
                     tracing::warn!(agent, error = %e, retry, delay_ms = d.as_millis() as u64, "retrying model call");
                     tokio::time::sleep(d).await;
@@ -310,11 +338,18 @@ impl AgentRuntime {
             let mut attempts = 0u32;
             let mut usage = Usage::default();
             let mut repaired = false;
+            let fallback = self.fallback_for(task.tier);
+            let mut current_model = model.clone();
             loop {
                 let call_started = Instant::now();
+                let span = tracing::info_span!("model_call", agent = task.agent, model = %current_model);
                 let reply = self
-                    .with_retries(task.agent, &mut attempts, || self.client.generate_json(&req))
-                    .instrument(tracing::info_span!("model_call", agent = task.agent, model = %req.model))
+                    .with_retries(task.agent, &mut attempts, &mut current_model, fallback.as_deref(), |m| {
+                        let r = JsonRequest { model: m, ..req.clone() };
+                        let client = self.client.clone();
+                        async move { client.generate_json(&r).await }
+                    })
+                    .instrument(span)
                     .await?;
                 let u = reply.usage.unwrap_or_default();
                 tracing::info!(
@@ -389,9 +424,11 @@ impl AgentRuntime {
             let mut attempts = 0u32;
             let mut usage = Usage::default();
             let mut repaired = false;
+            // No model fallback inside a tool loop: thought signatures are model-specific.
+            let mut tool_model = model.clone();
             for step in 0..self.budgets.max_steps {
                 let reply = self
-                    .with_retries(task.agent, &mut attempts, || self.client.tool_step(&req, &transcript))
+                    .with_retries(task.agent, &mut attempts, &mut tool_model, None, |_| self.client.tool_step(&req, &transcript))
                     .instrument(tracing::info_span!("model_call", agent = task.agent, step))
                     .await?;
                 self.charge(&mut usage, &reply.usage)?;

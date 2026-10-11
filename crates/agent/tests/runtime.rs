@@ -26,6 +26,7 @@ fn rt(m: MockModel) -> AgentRuntime {
         max_retries: 3,
         base_delay: Duration::from_millis(1),
         max_delay: Duration::from_millis(2),
+        ..RetryPolicy::default()
     })
 }
 
@@ -206,9 +207,45 @@ impl ModelClient for Slow {
 async fn hung_calls_are_retried_within_the_run_budget() {
     let r = AgentRuntime::new(Arc::new(Slow { calls: AtomicU32::new(0) }), ModelConfig::default())
         .with_budgets(Budgets { call_timeout: Duration::from_secs(5), timeout: Duration::from_secs(60), ..Budgets::default() })
-        .with_retry(RetryPolicy { max_retries: 2, base_delay: Duration::from_millis(1), max_delay: Duration::from_millis(1) });
+        .with_retry(RetryPolicy {
+            max_retries: 2,
+            base_delay: Duration::from_millis(1),
+            max_delay: Duration::from_millis(1),
+            ..RetryPolicy::default()
+        });
     let out = r.run_json(task(&no_check, false)).await.unwrap();
     assert_eq!((out.value.n, out.attempts), (1, 2));
+}
+
+/// Hangs on the Pro model, answers on any other.
+struct SlowPro;
+
+#[async_trait]
+impl ModelClient for SlowPro {
+    fn provider(&self) -> &'static str {
+        "slow-pro"
+    }
+    async fn generate_json(&self, req: &JsonRequest) -> Result<ModelReply, ModelError> {
+        if req.model == DEFAULT_PRO_MODEL {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        }
+        Ok(ModelReply { text: r#"{"n": 2}"#.into(), model: req.model.clone(), usage: None })
+    }
+    async fn tool_step(&self, _req: &ToolRequest, _t: &[Turn]) -> Result<ToolStepReply, ModelError> {
+        Err(ModelError::Empty)
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn pro_timeouts_fall_back_to_flash() {
+    let r = AgentRuntime::new(Arc::new(SlowPro), ModelConfig::default())
+        .with_budgets(Budgets { call_timeout: Duration::from_secs(5), timeout: Duration::from_secs(60), ..Budgets::default() })
+        .with_retry(RetryPolicy { base_delay: Duration::from_millis(1), max_delay: Duration::from_millis(1), ..RetryPolicy::default() });
+    let mut t = task(&no_check, false);
+    t.tier = ModelTier::Pro;
+    let out = r.run_json(t).await.unwrap();
+    assert_eq!(out.model, DEFAULT_FLASH_MODEL);
+    assert_eq!(out.attempts, 2);
 }
 
 #[test]

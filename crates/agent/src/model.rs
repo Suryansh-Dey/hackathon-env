@@ -208,12 +208,17 @@ pub enum ModelError {
     InvalidInput(String),
     #[error("not configured: {0}")]
     NotConfigured(String),
+    #[error("model call timed out: {0}")]
+    Timeout(String),
 }
 
 impl ModelError {
-    /// Rate limits, 5xx and transport failures are retried with backoff.
+    /// Rate limits, 5xx, timeouts and transport failures are retried with backoff.
     pub fn retryable(&self) -> bool {
-        matches!(self, ModelError::RateLimited(_) | ModelError::Server(_) | ModelError::Transport(_) | ModelError::Empty)
+        matches!(
+            self,
+            ModelError::RateLimited(_) | ModelError::Server(_) | ModelError::Transport(_) | ModelError::Timeout(_) | ModelError::Empty
+        )
     }
 }
 
