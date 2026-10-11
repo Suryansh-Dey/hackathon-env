@@ -1,0 +1,3 @@
+[submodule "gemini-client-api/llms-client"]
+	path = gemini-client-api/llms-client
+	url = https://github.com/Suryansh-Dey/llms-client.git

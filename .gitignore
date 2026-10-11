@@ -9,3 +9,4 @@ cdk.out/
 .DS_Store
 /.local/
 /apps/transporter/dist/
+/.claude/worktrees/
