@@ -5,7 +5,6 @@
 //! transporter app needs is modelled with named methods; [`Client::post`] /
 //! [`Client::get`] cover anything else.
 
-use kabados_domain::Grams;
 use kabados_domain::ids::{DealId, JobId};
 use kabados_domain::job::{Job, JobEventKind, JobStatus};
 use serde::Serialize;
@@ -25,7 +24,29 @@ pub enum ClientError {
     Decode(String),
 }
 
+impl ClientError {
+    /// Text to show the user: the problem's `detail` when the API gave one.
+    pub fn message(&self) -> String {
+        match self {
+            ClientError::Api { detail: Some(d), .. } => d.clone(),
+            ClientError::Api { status, title, .. } => format!("{title} ({status})"),
+            ClientError::Network(e) => format!("Network error: {e}"),
+            ClientError::Decode(e) => format!("Unexpected response: {e}"),
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, ClientError>;
+
+/// A new `Idempotency-Key` for one user action. Keys must be fresh per
+/// attempt: the API replays the stored response (errors included) for a
+/// reused key.
+pub fn fresh_key(prefix: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    format!("{prefix}-{nanos}-{}", SEQ.fetch_add(1, Ordering::Relaxed))
+}
 
 /// Authentication token store (refresh handled by the caller/bridge).
 #[derive(Clone, Default)]
@@ -97,10 +118,30 @@ impl Client {
         self.send(self.http.post(self.url(path)).header("idempotency-key", idempotency_key)).await
     }
 
+    // ---- sign-in and profile ----
+
+    /// Dev sign-in (`POST /dev/token`): phone only, no OTP. Prod uses Cognito.
+    pub async fn dev_token(&self, phone: &str) -> Result<DevToken> {
+        self.send(self.http.post(self.url("/dev/token")).json(&serde_json::json!({ "phone": phone }))).await
+    }
+
+    pub async fn me(&self) -> Result<MeView> {
+        self.get("/v1/me").await
+    }
+
+    pub async fn patch_me(&self, body: &PatchMe, key: &str) -> Result<MeView> {
+        self.send(self.http.patch(self.url("/v1/me")).header("idempotency-key", key).json(body)).await
+    }
+
+    pub async fn apply_transporter(&self, body: &ApplyTransporter, key: &str) -> Result<MeView> {
+        self.post("/v1/me/roles/TRANSPORTER:apply", body, key).await
+    }
+
     // ---- transporter surface ----
 
     pub async fn set_availability(&self, on_duty: bool) -> Result<Availability> {
-        self.send(self.http.put(self.url("/v1/transporter/availability")).json(&Availability { on_duty })).await
+        let req = self.http.put(self.url("/v1/transporter/availability")).header("idempotency-key", fresh_key("duty"));
+        self.send(req.json(&Availability { on_duty })).await
     }
 
     pub async fn register_device(&self, d: &DeviceReg) -> Result<kabados_domain::user::Device> {
@@ -138,18 +179,12 @@ impl Client {
         Ok(())
     }
 
-    pub async fn deal(&self, id: &DealId) -> Result<serde_json::Value> {
+    pub async fn deal(&self, id: &DealId) -> Result<DealView> {
         self.get(&format!("/v1/deals/{id}")).await
     }
 
-    pub async fn weigh(
-        &self,
-        deal: &DealId,
-        line_n: u32,
-        reading_g: Grams,
-        image_id: Option<&str>,
-        key: &str,
-    ) -> Result<serde_json::Value> {
+    /// Records a scale reading; returns the deal with server-computed line amounts.
+    pub async fn weigh(&self, deal: &DealId, line_n: u32, reading_g: Grams, image_id: Option<&str>, key: &str) -> Result<DealView> {
         self.post(
             &format!("/v1/deals/{deal}/weighings"),
             &serde_json::json!({"line_n": line_n, "reading_g": reading_g, "image_id": image_id}),
@@ -158,10 +193,11 @@ impl Client {
         .await
     }
 
-    pub async fn handover(&self, deal: &DealId, otp: &str, key: &str) -> Result<serde_json::Value> {
+    /// Verifies the seller's handover code; the job moves to LOADED.
+    pub async fn handover(&self, deal: &DealId, otp: &str, key: &str) -> Result<DealView> {
         self.post(&format!("/v1/deals/{deal}:handover"), &serde_json::json!({"otp": otp}), key).await
     }
 }
 
 /// Domain modules re-exported so callers need only depend on the client.
-pub use kabados_domain::{deal, geo, ids, job, user};
+pub use kabados_domain::{Grams, Paise, deal, geo, ids, job, offer, user};
