@@ -14,11 +14,12 @@ impl WorkerCtx {
         let app = AppState::from_env().await?;
         // Agents read GEMINI_API_KEY from the environment; load it from Secrets
         // Manager once at init (Lambda init is single-threaded) when AI is live.
-        if app.cfg.modes.ai != kabados_runtime::Mode::Mock && std::env::var("GEMINI_API_KEY").is_err() {
-            if let Ok(key) = app.secrets.get("gemini/api_key", "GEMINI_API_KEY").await {
-                // SAFETY: set during single-threaded Lambda init, before any agent runs.
-                unsafe { std::env::set_var("GEMINI_API_KEY", key) };
-            }
+        if app.cfg.modes.ai != kabados_runtime::Mode::Mock
+            && std::env::var("GEMINI_API_KEY").is_err()
+            && let Ok(key) = app.secrets.get("gemini/api_key", "GEMINI_API_KEY").await
+        {
+            // SAFETY: set during single-threaded Lambda init, before any agent runs.
+            unsafe { std::env::set_var("GEMINI_API_KEY", key) };
         }
         Ok(Self { app })
     }
