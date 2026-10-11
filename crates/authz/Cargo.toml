@@ -1,0 +1,25 @@
+[package]
+name = "kabados-authz"
+description = "Cedar authorization for KabadOS: embedded policy engine, Amazon Verified Permissions client and entity loader (PLAN.md §18)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kabados-domain.workspace = true
+cedar-policy.workspace = true
+aws-sdk-verifiedpermissions.workspace = true
+async-trait.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+aws-config.workspace = true
+
+[lints]
+workspace = true
