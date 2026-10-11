@@ -1,0 +1,29 @@
+[package]
+name = "kabados-agent"
+description = "Agent runtime over gemini-client-api: budgets, retries, schema validation, caching, tracing (PLAN.md §11.2)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gemini-client-api.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+sha2.workspace = true
+hex.workspace = true
+base64.workspace = true
+reqwest.workspace = true
+mime.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

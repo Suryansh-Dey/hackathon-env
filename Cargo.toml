@@ -90,8 +90,12 @@ aws-smithy-runtime-api = "1"
 # authz
 cedar-policy = "4"
 
+# cli
+clap = { version = "4.5", features = ["derive"] }
+
 # media
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+mime = "0.3"
+image ={ version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 image_hasher = "3"
 
 # testing
