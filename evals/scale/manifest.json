@@ -1,0 +1,15 @@
+{
+  "suite": "scale",
+  "version": "scale-golden-2026-10-11",
+  "note": "Synthetic 7-segment displays rendered at run time by kabados_agents::synthetic. Add real scale photos (render: file) from pickups.",
+  "cases": [
+    {"id": "kg-two-decimals", "image": {"render": "scale", "text": "42.60", "unit": "kg"}, "expected_g": 42600},
+    {"id": "kg-one-decimal", "image": {"render": "scale", "text": "7.5", "unit": "kg"}, "expected_g": 7500},
+    {"id": "kg-heavy", "image": {"render": "scale", "text": "125.0", "unit": "kg"}, "expected_g": 125000},
+    {"id": "grams", "image": {"render": "scale", "text": "980", "unit": "g"}, "expected_g": 980},
+    {"id": "kg-three-digits-decimal", "image": {"render": "scale", "text": "3.25", "unit": "kg"}, "expected_g": 3250},
+    {"id": "kg-below-one", "image": {"render": "scale", "text": "0.85", "unit": "kg"}, "expected_g": 850},
+    {"id": "kg-integer", "image": {"render": "scale", "text": "18", "unit": "kg"}, "expected_g": 18000},
+    {"id": "kg-all-segments", "image": {"render": "scale", "text": "68.09", "unit": "kg"}, "expected_g": 68090}
+  ]
+}

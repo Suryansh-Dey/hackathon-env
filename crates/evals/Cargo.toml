@@ -1,0 +1,27 @@
+[package]
+name = "kabados-evals"
+description = "Replays golden sets through the KabadOS agents and gates releases on accuracy and hazard recall (PLAN.md §11.10)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kabados-evals"
+path = "src/main.rs"
+
+[dependencies]
+kabados-agent.workspace = true
+kabados-agents.workspace = true
+kabados-domain.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

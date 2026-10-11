@@ -1,0 +1,11 @@
+{
+  "suite": "triage",
+  "version": "triage-golden-2026-10-11",
+  "note": "Synthetic negatives only (dark and empty frames). Positive cases need real labelled scrap photos added as render: file fixtures.",
+  "cases": [
+    {"id": "black", "image": {"render": "flat", "rgb": [5, 5, 5]}, "expected_usable": false},
+    {"id": "very-dark", "image": {"render": "flat", "rgb": [18, 16, 20]}, "expected_usable": false},
+    {"id": "blank-wall", "image": {"render": "flat", "rgb": [205, 200, 190]}, "expected_usable": false},
+    {"id": "blank-grey", "image": {"render": "flat", "rgb": [128, 128, 128]}, "expected_usable": false}
+  ]
+}

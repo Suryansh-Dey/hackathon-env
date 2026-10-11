@@ -1,0 +1,51 @@
+{
+  "suite": "rules",
+  "version": "rules-golden-2026-10-11",
+  "note": "Plain-text rate-card instructions → RuleSet drafts (PLAN.md §7.2, §11.7). Prices in paise.",
+  "cases": [
+    {"id": "plan-example", "instruction": "copper 650, brass 400, paper 14 above 5 kilo, no glass", "now": "2026-10-11T12:00:00+05:30",
+     "expected_lines": [
+       {"category_id": "metal.copper", "price_per_kg_paise": 65000},
+       {"category_id": "metal.brass", "price_per_kg_paise": 40000},
+       {"category_id": "paper.newspaper", "price_per_kg_paise": 1400, "min_weight_g": 5000}
+     ],
+     "expected_excluded": ["glass.bottles", "glass.mixed"]},
+    {"id": "bulk-metals", "instruction": "all metals +3% from tomorrow 9am", "now": "2026-10-11T12:00:00+05:30",
+     "current_lines": [
+       {"category_id": "metal.copper", "grade": "clean", "price_per_kg_paise": 65000},
+       {"category_id": "metal.brass", "price_per_kg_paise": 40000},
+       {"category_id": "paper.newspaper", "price_per_kg_paise": 1400}
+     ],
+     "expected_lines": [
+       {"category_id": "metal.copper", "grade": "clean", "price_per_kg_paise": 66950},
+       {"category_id": "metal.brass", "price_per_kg_paise": 41200},
+       {"category_id": "paper.newspaper", "price_per_kg_paise": 1400}
+     ],
+     "expected_effective_from": "2026-10-12T09:00:00+05:30"},
+    {"id": "per-piece", "instruction": "laptop 300 each, mobile phone 50 per piece", "now": "2026-10-11T12:00:00+05:30",
+     "expected_lines": [
+       {"category_id": "ewaste.itew.laptop", "price_per_piece_paise": 30000},
+       {"category_id": "ewaste.itew.mobile_phone", "price_per_piece_paise": 5000}
+     ]},
+    {"id": "plastics", "instruction": "cardboard 9, pet bottles 18, no mixed plastic", "now": "2026-10-11T12:00:00+05:30",
+     "expected_lines": [
+       {"category_id": "paper.cardboard", "price_per_kg_paise": 900},
+       {"category_id": "plastic.pet_bottle", "price_per_kg_paise": 1800}
+     ],
+     "expected_excluded": ["plastic.hard_mixed"]},
+    {"id": "steel", "instruction": "iron 32, stainless steel 60", "now": "2026-10-11T12:00:00+05:30",
+     "expected_lines": [
+       {"category_id": "metal.iron_steel", "price_per_kg_paise": 3200},
+       {"category_id": "metal.stainless_steel", "price_per_kg_paise": 6000}
+     ]},
+    {"id": "update-one", "instruction": "brass 410", "now": "2026-10-11T12:00:00+05:30",
+     "current_lines": [
+       {"category_id": "metal.brass", "price_per_kg_paise": 40000},
+       {"category_id": "paper.newspaper", "price_per_kg_paise": 1400}
+     ],
+     "expected_lines": [
+       {"category_id": "metal.brass", "price_per_kg_paise": 41000},
+       {"category_id": "paper.newspaper", "price_per_kg_paise": 1400}
+     ]}
+  ]
+}

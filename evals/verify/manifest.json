@@ -1,0 +1,19 @@
+{
+  "suite": "verify",
+  "version": "verify-golden-2026-10-11",
+  "note": "Claim-verification invariants and proof-request quality (PLAN.md §11.5). Photo cases need ops-labelled fixtures (render: file).",
+  "cases": [
+    {"id": "copper-no-photos", "items": [{"category_id": "metal.copper", "kg": 12}],
+     "description": "pure copper winding from an old motor, never used",
+     "checks": {"no_supported": true, "min_claims": 1, "max_proofs": 3, "proof_shot_any": ["CLOSE_UP", "CUT_SECTION"]}},
+    {"id": "branded-ac-no-photos", "items": [{"category_id": "ewaste.ceew.split_ac_outdoor", "kg": 35}],
+     "claim_reason": "branded unit, model number on the side",
+     "checks": {"no_supported": true, "min_claims": 1, "max_proofs": 3, "proof_shot_any": ["LABEL"]}},
+    {"id": "round-limit", "items": [{"category_id": "metal.copper", "kg": 8}], "prior_rounds": 2,
+     "description": "clean bright copper",
+     "checks": {"no_supported": true, "max_proofs": 0}},
+    {"id": "working-fridge", "items": [{"category_id": "ewaste.ceew.refrigerator", "kg": 45}],
+     "claim_reason": "fully working fridge",
+     "checks": {"no_supported": true, "min_claims": 1, "max_proofs": 3, "proof_shot_any": ["WORKING_DEMO"]}}
+  ]
+}

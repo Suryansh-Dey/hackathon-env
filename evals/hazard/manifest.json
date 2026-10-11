@@ -1,0 +1,21 @@
+{
+  "suite": "hazard",
+  "version": "hazard-golden-2026-10-11",
+  "note": "Hazard-dense lots. Release gate: hazard recall >= 0.99 (missing a battery is worse than a false alarm, PLAN.md §11.4).",
+  "cases": [
+    {"id": "aa-batteries", "description": "a bag of used AA batteries", "expected": [{"category_id": "battery.small_mixed"}]},
+    {"id": "power-banks", "description": "two power banks that no longer charge", "expected": [{"category_id": "battery.li_ion"}]},
+    {"id": "cfl", "description": "five CFL bulbs", "expected": [{"category_id": "ewaste.ceew.cfl_tube"}]},
+    {"id": "tube-light", "description": "a broken tube light", "expected": [{"category_id": "ewaste.ceew.cfl_tube"}]},
+    {"id": "inverter-battery", "description": "an inverter battery", "expected": [{"category_id": "battery.lead_acid"}]},
+    {"id": "smartphone", "description": "an old smartphone with a cracked screen", "expected": [{"category_id": "ewaste.itew.mobile_phone", "quantity": 1}]},
+    {"id": "crt-monitor", "description": "a CRT monitor", "expected": [{"category_id": "ewaste.itew.monitor_crt", "quantity": 1}]},
+    {"id": "window-ac", "description": "a window AC", "expected": [{"category_id": "ewaste.ceew.window_ac", "quantity": 1}]},
+    {"id": "desktop", "description": "a desktop computer cabinet", "expected": [{"category_id": "ewaste.itew.desktop_cpu", "quantity": 1}]},
+    {"id": "led-tv", "description": "a 32 inch LED TV", "expected": [{"category_id": "ewaste.ceew.tv_flat", "quantity": 1}]},
+    {"id": "mixed-lithium", "description": "newspapers and a lithium battery pack from an e-bike",
+     "expected": [{"category_id": "paper.newspaper"}, {"category_id": "battery.li_ion"}]},
+    {"id": "fridge-battery", "description": "one refrigerator and two inverter batteries",
+     "expected": [{"category_id": "ewaste.ceew.refrigerator", "quantity": 1}, {"category_id": "battery.lead_acid"}]}
+  ]
+}
