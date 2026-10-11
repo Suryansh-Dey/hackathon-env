@@ -76,10 +76,10 @@ async fn main() -> anyhow::Result<()> {
                         if let Err(e) = outbox::handle_records(&worker, &[item]).await {
                             tracing::warn!(error = %e, "outbox pump");
                         }
-                        if ty == "outbox" {
-                            if let Some(env) = new.get("data").cloned().and_then(|d| serde_json::from_value::<EventEnvelope>(d).ok()) {
-                                dispatch_event(&worker, &env).await;
-                            }
+                        if ty == "outbox"
+                            && let Some(env) = new.get("data").cloned().and_then(|d| serde_json::from_value::<EventEnvelope>(d).ok())
+                        {
+                            dispatch_event(&worker, &env).await;
                         }
                     }
                     _ => {}
