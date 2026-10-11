@@ -1,13 +1,59 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Badge, Button, Card, ErrorNote, Field, Spinner, formatPaise, useApi, useAuth } from '@kabados/ui';
+import { Badge, Button, Card, ErrorNote, Field, Spinner, formatPaise, formatRange, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
-import { pth, type VersionPath } from '../lib/api';
+import { msg, pth, type VersionPath } from '../lib/api';
 
 type Weekday = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
 const WEEKDAYS: Weekday[] = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
 type Issue = { message: string; path: string };
+
+/** The parts of a Quote the simulation view shows. */
+type Quote = { eligible: boolean; quote_low: number; quote_high: number; explanation_codes: string[]; uncovered_item_ids: string[] };
+/** `:simulate` response (off the typed contract): draft vs live quotes on nearby listings. */
+type Simulation = {
+  rows: { listing: { id: string; title: string; categories: string[] }; current?: Quote | null; draft: Quote }[];
+  eligible_now: number;
+  eligible_with_draft: number;
+};
+
+const codeText = (c: string) => c.replaceAll('_', ' ').toLowerCase();
+
+function QuoteCell({ q }: { q?: Quote | null }) {
+  if (!q) return <span className="kb-muted">no live card</span>;
+  if (!q.eligible) {
+    const why = q.explanation_codes.filter((c) => !c.endsWith('_APPLIED')).map(codeText);
+    return <span className="kb-muted">not eligible{why.length ? ` (${why.join(', ')})` : ''}</span>;
+  }
+  return <span>{formatRange(q.quote_low, q.quote_high)}{q.uncovered_item_ids.length ? <span className="kb-muted"> · {q.uncovered_item_ids.length} item(s) not covered</span> : null}</span>;
+}
+
+function SimulationResult({ sim }: { sim: Simulation }) {
+  return (
+    <div style={{ marginTop: 12 }}>
+      <strong>Simulation on nearby listings</strong>
+      <p className="kb-muted">
+        Eligible with this draft: {sim.eligible_with_draft} of {sim.rows.length} · with your live card: {sim.eligible_now}
+      </p>
+      {sim.rows.length === 0 ? (
+        <p className="kb-muted">No open listings near your yard to test against right now.</p>
+      ) : (
+        <ul className="kb-list">
+          {sim.rows.map((r) => (
+            <li key={r.listing.id}>
+              <strong>{r.listing.title || r.listing.categories.join(', ')}</strong>
+              <br />
+              <span>Draft: <QuoteCell q={r.draft} /></span>
+              <br />
+              <span className="kb-muted">Live: </span><QuoteCell q={r.current} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 type RuleLineForm = { category_id: string; grade: string; unit: 'KG' | 'PIECE'; price: string; min_weight_kg: string };
 
 function IssueList({ issues }: { issues: Issue[] }) {
@@ -126,12 +172,12 @@ export default function RateCard() {
   // Simulate / Publish
   const simulate = useMutation({
     mutationFn: async (vars: { id: string; v: number }) => {
-      const { error } = await api.POST('/v1/vendor/rule-sets/{id}/versions/{v}:simulate' as VersionPath, {
+      const { data, error } = await api.POST('/v1/vendor/rule-sets/{id}/versions/{v}:simulate' as VersionPath, {
         params: pth({ id: vars.id, v: String(vars.v) }),
       });
       if (error) throw error;
+      return data as unknown as Simulation;
     },
-    onSuccess: invalidate,
   });
   const publish = useMutation({
     mutationFn: async (vars: { id: string; v: number }) => {
@@ -160,6 +206,8 @@ export default function RateCard() {
       <h1 className="kb-h1">Rate card</h1>
       <p className="kb-muted">Edit by typing, by bulk change, or with the full form. Review the draft, simulate it, then publish. Nothing goes live until you publish, and a draft with issues can’t be published.</p>
 
+      {ruleSets.error ? <ErrorNote>{msg(ruleSets.error, 'Could not load your rate card.')}</ErrorNote> : null}
+
       {/* Current draft */}
       <Card title="Current draft">
         {draft ? (
@@ -186,9 +234,9 @@ export default function RateCard() {
                 {publish.isPending ? 'Publishing…' : 'Publish'}
               </Button>
             </div>
-            {simulate.isSuccess ? <p className="kb-muted">Simulation ran. Review issues above before publishing.</p> : null}
-            {simulate.error ? <ErrorNote>Simulation failed — fix the issues and retry.</ErrorNote> : null}
-            {publish.error ? <ErrorNote>Could not publish. A draft with issues can’t go live.</ErrorNote> : null}
+            {simulate.data ? <SimulationResult sim={simulate.data} /> : null}
+            {simulate.error ? <ErrorNote>{msg(simulate.error, 'Simulation failed — fix the issues and retry.')}</ErrorNote> : null}
+            {publish.error ? <ErrorNote>{msg(publish.error, 'Could not publish. A draft with issues can’t go live.')}</ErrorNote> : null}
             {publish.isSuccess ? <p className="kb-muted">Published. It’s now your live rate card.</p> : null}
           </>
         ) : (
@@ -205,7 +253,7 @@ export default function RateCard() {
         <Button disabled={draftFromText.isPending || !instruction.trim()} onClick={() => draftFromText.mutate()}>
           {draftFromText.isPending ? 'Drafting…' : 'Draft from text'}
         </Button>
-        {draftFromText.error ? <ErrorNote>Could not draft from that instruction.</ErrorNote> : null}
+        {draftFromText.error ? <ErrorNote>{msg(draftFromText.error, 'Could not draft from that instruction.')}</ErrorNote> : null}
         {textResult ? (
           <div style={{ marginTop: 12 }}>
             <p className="kb-muted">Drafted {textResult.draft.lines.length} line(s).</p>
@@ -234,7 +282,7 @@ export default function RateCard() {
         <Button disabled={bulk.isPending || !glob.trim() || !percent.trim()} onClick={() => bulk.mutate()}>
           {bulk.isPending ? 'Applying…' : 'Apply bulk change'}
         </Button>
-        {bulk.error ? <ErrorNote>Could not apply the bulk change.</ErrorNote> : null}
+        {bulk.error ? <ErrorNote>{msg(bulk.error, 'Could not apply the bulk change.')}</ErrorNote> : null}
         {bulkResult ? (
           <div style={{ marginTop: 12 }}>
             <p className="kb-muted">Updated draft has {bulkResult.draft.lines.length} line(s).</p>
@@ -296,7 +344,7 @@ export default function RateCard() {
         <h3 className="kb-card-title">Exclusions</h3>
         <Field label="Excluded category globs (comma-separated)"><input className="kb-input" value={exclusions} onChange={(e) => setExclusions(e.target.value)} placeholder="glass.*" /></Field>
 
-        {saveForm.error ? <ErrorNote>{saveForm.error instanceof Error ? saveForm.error.message : 'Could not save the draft.'}</ErrorNote> : null}
+        {saveForm.error ? <ErrorNote>{msg(saveForm.error, 'Could not save the draft.')}</ErrorNote> : null}
         {saveForm.isSuccess ? <p className="kb-muted">Draft saved. Review, simulate and publish it above.</p> : null}
         <div style={{ marginTop: 12 }}>
           <Button disabled={saveForm.isPending} onClick={() => saveForm.mutate()}>{saveForm.isPending ? 'Saving…' : 'Save draft'}</Button>

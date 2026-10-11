@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, Card, ErrorNote, Field, LadderBadge, Spinner, formatRange, formatWeight, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
-import { pth } from '../lib/api';
+import { msg, pth } from '../lib/api';
 
 type PickupMethod = 'SELF_PICKUP' | 'TRANSPORTER';
 type PaymentMode = 'A_PLATFORM' | 'B_DIRECT';
@@ -80,7 +80,7 @@ export default function ListingDetail() {
     );
   if (!id) return <Card title="Listing not found"><p className="kb-muted">No listing id in the link.</p><a href="/feed/"><Button>Back to listings</Button></a></Card>;
   if (listing.isLoading) return <Spinner label="Loading listing…" />;
-  if (listing.error || !listing.data) return <ErrorNote>Could not load this listing.</ErrorNote>;
+  if (listing.error || !listing.data) return <ErrorNote>{msg(listing.error, 'Could not load this listing.')}</ErrorNote>;
 
   const v = listing.data;
   const l = v.listing;
@@ -124,7 +124,7 @@ export default function ListingDetail() {
 
       <Card title="Your rate-card quote">
         {quote.isLoading ? <Spinner label="Pricing…" /> : null}
-        {quote.error ? <ErrorNote>No quote — you may not have a published rate card, or this lot isn’t covered.</ErrorNote> : null}
+        {quote.error ? <ErrorNote>{msg(quote.error, 'No quote — you may not have a published rate card, or this lot isn’t covered.')}</ErrorNote> : null}
         {q ? (
           q.eligible ? (
             <>
@@ -172,7 +172,7 @@ export default function ListingDetail() {
         <Field label="Note to seller (optional)">
           <input className="kb-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Can collect today" />
         </Field>
-        {offer.error ? <ErrorNote>Could not send the offer. Check your rate card is published and the lot is eligible.</ErrorNote> : null}
+        {offer.error ? <ErrorNote>{msg(offer.error, 'Could not send the offer. Check your rate card is published and the lot is eligible.')}</ErrorNote> : null}
         {offer.isSuccess ? <p className="kb-muted">Offer sent. Track it under Offers.</p> : null}
         <Button onClick={() => offer.mutate()} disabled={offer.isPending || offer.isSuccess}>
           {offer.isPending ? 'Sending…' : offer.isSuccess ? 'Offer sent' : 'Send offer'}

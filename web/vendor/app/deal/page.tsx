@@ -2,14 +2,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, Card, ErrorNote, Field, Spinner, formatDate, formatPaise, formatWeight, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
-import { pth, type DealActionPath, type NoBodyIdPath } from '../lib/api';
+import { msg, pth, type DealActionPath, type NoBodyIdPath } from '../lib/api';
+import { openCheckout } from '../lib/razorpay';
 
 type PaymentRequest = {
-  order: { id: string; amount: number; simulated: boolean };
+  order: { id: string; amount: number; currency: string; key_id: string; simulated: boolean };
   seller_amount: number;
   transporter_fare: number;
   platform_fee: number;
 };
+
+/** GET /v1/public/config (its operation id collides with the ops config in the generated types). */
+type ClientConfig = { env: string; payments_simulated: boolean; razorpay_key_id?: string | null };
+
+/** Job statuses after which the deal can be offered to transporters again. */
+const ENDED_JOB = ['DECLINED', 'TIMED_OUT', 'CANCELLED', 'PAID_OUT'];
 
 export default function DealDetail() {
   const { token } = useAuth();
@@ -36,6 +43,19 @@ export default function DealDetail() {
       return data;
     },
   });
+
+  // Razorpay key + whether payments are mocked on this environment.
+  const config = useQuery({
+    queryKey: ['public-config'],
+    enabled: ready,
+    staleTime: Infinity,
+    queryFn: async () => {
+      const { data, error } = await api.GET('/v1/public/config');
+      if (error) throw error;
+      return data as unknown as ClientConfig;
+    },
+  });
+  const simulated = config.data?.payments_simulated ?? false;
 
   const [weights, setWeights] = useState<Record<number, string>>({});
   const [otp, setOtp] = useState('');
@@ -74,6 +94,32 @@ export default function DealDetail() {
     },
   });
 
+  // Mode A, real Razorpay (test mode on dev): create/refresh the order, open
+  // Checkout, then have the server verify the signed result.
+  const pay = useMutation({
+    mutationFn: async (currentOrderId: string | null) => {
+      let pr = payReq && payReq.order.id === currentOrderId ? payReq : null;
+      if (!pr) {
+        const { data, error } = await api.POST('/v1/deals/{id}/payment-request', { params: pth({ id: id! }) });
+        if (error) throw error;
+        pr = data as unknown as PaymentRequest;
+        setPayReq(pr);
+      }
+      const key = config.data?.razorpay_key_id || pr.order.key_id;
+      if (!key) throw new Error('Online payments are not configured on this environment.');
+      const result = await openCheckout({
+        key,
+        orderId: pr.order.id,
+        amount: pr.order.amount,
+        currency: pr.order.currency || 'INR',
+        description: `Deal ${id}`,
+      });
+      const { error } = await api.POST('/v1/deals/{id}/payment:verify-checkout', { params: pth({ id: id! }), body: result });
+      if (error) throw error;
+    },
+    onSettled: invalidate,
+  });
+
   const simulate = useMutation({
     mutationFn: async (orderId: string) => {
       // Dev/mock capture: this route is off the typed contract, so we cast the
@@ -89,7 +135,7 @@ export default function DealDetail() {
     return <Card title="Sign in required"><a href="/signin/"><Button>Sign in</Button></a></Card>;
   if (!id) return <Card title="Deal not found"><a href="/deals/"><Button>Back to deals</Button></a></Card>;
   if (deal.isLoading) return <Spinner label="Loading deal…" />;
-  if (deal.error || !deal.data) return <ErrorNote>Could not load this deal.</ErrorNote>;
+  if (deal.error || !deal.data) return <ErrorNote>{deal.error ? msg(deal.error, 'Could not load this deal.') : 'Could not load this deal.'}</ErrorNote>;
 
   const v = deal.data;
   const d = v.deal;
@@ -98,15 +144,26 @@ export default function DealDetail() {
   const isModeA = d.payment_mode === 'A_PLATFORM';
   const orderId = payReq?.order.id ?? d.payment_order_id ?? null;
 
-  const canArrive = isSelf && (status === 'PICKUP_SCHEDULED' || status === 'CREATED');
+  const job = v.job ?? null;
+  const jobActive = !!job && !ENDED_JOB.includes(job.status);
+  const preTrip = status === 'PICKUP_SCHEDULED' || status === 'CREATED';
+
+  const canAssign = !isSelf && preTrip && !jobActive;
+  const canArrive = isSelf && preTrip;
   const canWeigh = status === 'AT_PICKUP' || status === 'WEIGHED' || status === 'LINE_REGRADED';
-  const canRequestPayment = isModeA && status === 'SELLER_CONFIRMED';
-  const canSimulate = isModeA && (status === 'AWAITING_PAYMENT' || !!payReq) && !!orderId;
-  const canMarkPaidDirect = !isModeA && status === 'SELLER_CONFIRMED';
+  // Simulated payments (mock adapter): request, then simulate the capture.
+  const canRequestPayment = isModeA && simulated && status === 'SELLER_CONFIRMED';
+  const canSimulate = isModeA && simulated && status === 'AWAITING_PAYMENT' && !!orderId;
+  // Real Razorpay Checkout (test mode on dev). Re-openable while awaiting payment.
+  const canPay = isModeA && !simulated && (status === 'SELLER_CONFIRMED' || status === 'AWAITING_PAYMENT');
+  const markedPaid = !!d.direct_payment_marked_at;
+  const canMarkPaidDirect = !isModeA && status === 'SELLER_CONFIRMED' && !markedPaid;
   const canHandover = status === 'PAID' || status === 'PAID_DIRECT';
   const canConfirmDelivery = status === 'HANDED_OVER' || status === 'IN_TRANSIT';
+  const payTotal = payReq?.order.amount ?? (d.final_amount != null ? d.final_amount + (d.transporter_fare ?? 0) + d.platform_fee : null);
+  const testMode = !!config.data && config.data.env !== 'prod';
 
-  const actErr = action.error || weigh.error || requestPayment.error || simulate.error;
+  const actErr = action.error || weigh.error || requestPayment.error || simulate.error || pay.error;
 
   return (
     <>
@@ -119,6 +176,7 @@ export default function DealDetail() {
         {isSelf ? 'Self-pickup' : 'Transporter'} · {isModeA ? 'Platform-mediated (Mode A)' : 'Direct (Mode B)'}
         {v.counterpart_name ? ` · Seller: ${v.counterpart_name}` : ''}
         {d.slot ? ` · ${formatDate(d.slot.date)} ${d.slot.window}` : ''}
+        {job ? ` · Transporter job: ${job.status.replaceAll('_', ' ').toLowerCase()}` : ''}
       </p>
 
       <Card title="Amount">
@@ -183,14 +241,37 @@ export default function DealDetail() {
       </Card>
 
       <Card title="Next step">
-        {actErr ? <ErrorNote>That action didn’t go through. Check the deal is at the right stage and try again.</ErrorNote> : null}
+        {actErr ? <ErrorNote>{msg(actErr, 'That action didn’t go through. Check the deal is at the right stage and try again.')}</ErrorNote> : null}
+
+        {canAssign ? (
+          <p>
+            <a href={`/transporters/?deal_id=${encodeURIComponent(d.id)}`}><Button>Assign transporter</Button></a>{' '}
+            <span className="kb-muted">{job ? 'The last job ended without a transporter. Offer it again.' : 'Offer this pickup to your transporters.'}</span>
+          </p>
+        ) : null}
 
         {canArrive ? (
           <p><Button disabled={action.isPending} onClick={() => action.mutate({ name: 'arrive' })}>Mark arrived at pickup</Button></p>
         ) : null}
 
         {canRequestPayment ? (
-          <p><Button disabled={requestPayment.isPending} onClick={() => requestPayment.mutate()}>Request payment from seller</Button></p>
+          <p><Button disabled={requestPayment.isPending} onClick={() => requestPayment.mutate()}>Create payment order</Button></p>
+        ) : null}
+
+        {canPay ? (
+          <>
+            <p>
+              <Button disabled={pay.isPending || config.isLoading} onClick={() => pay.mutate(orderId)}>
+                {pay.isPending ? 'Waiting for payment…' : `Pay ${payTotal != null ? formatPaise(payTotal) : ''} with Razorpay`}
+              </Button>
+            </p>
+            <p className="kb-muted">Covers the seller amount, transporter fare and platform fee. The seller gets a handover code once it’s paid.</p>
+            {testMode ? (
+              <p className="kb-muted" style={{ fontSize: '0.8em' }}>
+                Test mode: card 4111 1111 1111 1111, any future expiry, any CVV — or UPI <code>success@razorpay</code>.
+              </p>
+            ) : null}
+          </>
         ) : null}
 
         {payReq ? (
@@ -211,6 +292,9 @@ export default function DealDetail() {
         {canMarkPaidDirect ? (
           <p><Button disabled={action.isPending} onClick={() => action.mutate({ name: 'mark-paid-direct' })}>Mark paid directly (Mode B)</Button></p>
         ) : null}
+        {!isModeA && status === 'SELLER_CONFIRMED' && markedPaid ? (
+          <p className="kb-muted">Marked as paid. Waiting for the seller to confirm they received it.</p>
+        ) : null}
 
         {canHandover ? (
           <>
@@ -225,7 +309,7 @@ export default function DealDetail() {
           <p><Button disabled={action.isPending} onClick={() => action.mutate({ name: 'confirm-delivery' })}>Confirm delivery at yard</Button></p>
         ) : null}
 
-        {!canArrive && !canWeigh && !canRequestPayment && !canSimulate && !canMarkPaidDirect && !canHandover && !canConfirmDelivery ? (
+        {!canAssign && !canArrive && !canWeigh && !canRequestPayment && !canPay && !canSimulate && !canMarkPaidDirect && !canHandover && !canConfirmDelivery ? (
           <p className="kb-muted">No action needed from you right now.</p>
         ) : null}
       </Card>

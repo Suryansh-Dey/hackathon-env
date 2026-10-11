@@ -2,7 +2,7 @@
 import { Button, Card, ErrorNote, Field, Spinner, apiBaseUrl, useApi, useAuth } from '@kabados/ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { pth } from '../lib/api';
+import { msg, pth } from '../lib/api';
 
 export default function SignIn() {
   const { token, setToken } = useAuth();
@@ -17,6 +17,8 @@ export default function SignIn() {
 
   // Vendor onboarding (shown after sign-in when the account has no vendor role).
   const [me, setMe] = useState<{ hasVendor: boolean } | null>(null);
+  const [name, setName] = useState('');
+  const [adult, setAdult] = useState(false);
   const [biz, setBiz] = useState('');
   const [city, setCity] = useState('');
   const [lat, setLat] = useState('');
@@ -33,11 +35,11 @@ export default function SignIn() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ phone }),
       });
-      if (!res.ok) throw new Error('Could not sign in with that number');
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw data ?? new Error('Could not sign in with that number');
       setToken(data.token, data.sub);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Sign-in failed');
+      setErr(msg(e, 'Sign-in failed'));
     } finally {
       setBusy(false);
     }
@@ -48,11 +50,18 @@ export default function SignIn() {
     if (!ready || !token) return;
     let active = true;
     (async () => {
-      const { data } = await api.GET('/v1/me');
+      const { data, error } = await api.GET('/v1/me');
       if (!active) return;
+      if (error) {
+        setErr(msg(error, 'Could not load your account'));
+        setMe({ hasVendor: false });
+        return;
+      }
       const hasVendor = !!data?.vendor || !!data?.roles?.includes('VENDOR');
       setMe({ hasVendor });
       if (data) {
+        setName((n) => n || data.name || '');
+        setAdult((a) => a || data.adult_confirmed);
         setCity((c) => c || data.vendor?.city || '');
         setBiz((b) => b || data.vendor?.business_name || '');
       }
@@ -69,9 +78,15 @@ export default function SignIn() {
     try {
       const latN = Number(lat);
       const lngN = Number(lng);
-      if (!biz.trim() || !city.trim() || Number.isNaN(latN) || Number.isNaN(lngN)) {
+      if (!name.trim()) throw new Error('Enter your name.');
+      if (!adult) throw new Error('Confirm you are 18 or older to continue.');
+      if (!biz.trim() || !city.trim() || !lat.trim() || !lng.trim() || Number.isNaN(latN) || Number.isNaN(lngN)) {
         throw new Error('Fill business name, city and yard coordinates.');
       }
+      // Profile first: the server refuses role applications until the account
+      // has a name and has confirmed 18+.
+      const { error: profileErr } = await api.PATCH('/v1/me', { body: { name: name.trim(), adult_confirmed: true } });
+      if (profileErr) throw profileErr;
       const { error } = await api.POST('/v1/me/roles/{role}:apply', {
         params: pth({ role: 'VENDOR' }),
         body: {
@@ -84,7 +99,7 @@ export default function SignIn() {
       if (error) throw error;
       router.replace('/');
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not complete onboarding');
+      setErr(msg(e, 'Could not complete onboarding'));
     } finally {
       setBusy(false);
     }
@@ -111,6 +126,9 @@ export default function SignIn() {
   return (
     <Card title="Set up your yard">
       <p className="kb-muted">A few details unlock the vendor tools. You can refine your service area later in the rate card.</p>
+      <Field label="Your name">
+        <input className="kb-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ramesh Sharma" autoComplete="name" />
+      </Field>
       <Field label="Business name">
         <input className="kb-input" value={biz} onChange={(e) => setBiz(e.target.value)} placeholder="e.g. Sharma Scrap Traders" />
       </Field>
@@ -125,9 +143,12 @@ export default function SignIn() {
           <input className="kb-input" value={lng} onChange={(e) => setLng(e.target.value)} inputMode="decimal" placeholder="73.8567" />
         </Field>
       </div>
-      <Field label="Categories you buy (comma-separated globs, optional)">
-        <input className="kb-input" value={cats} onChange={(e) => setCats(e.target.value)} placeholder="metal.*, paper.*, ewaste.*" />
+      <Field label="Categories you buy (exact category ids, comma-separated, optional)">
+        <input className="kb-input" value={cats} onChange={(e) => setCats(e.target.value)} placeholder="ewaste.itew.laptop, ewaste.itew.mobile_phone" />
       </Field>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '8px 0', cursor: 'pointer' }}>
+        <input type="checkbox" checked={adult} onChange={(e) => setAdult(e.target.checked)} /> I am 18 or older
+      </label>
       {err ? <ErrorNote>{err}</ErrorNote> : null}
       <Button onClick={onboard} disabled={busy}>{busy ? 'Submitting…' : 'Become a vendor'}</Button>
     </Card>

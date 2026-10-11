@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge, Button, Card, ErrorNote, Field, Spinner, formatPaise, stars, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
-import { pth, qry } from '../lib/api';
+import { msg, pth, qry } from '../lib/api';
 
 type Dispatch = 'SEQUENTIAL' | 'BROADCAST';
 
@@ -95,6 +95,7 @@ export default function Transporters() {
 
       {dealId ? (
         <Card title="Assign a pickup job">
+          <p className="kb-muted"><a href={`/deal/?id=${encodeURIComponent(dealId)}`}>← Back to the deal</a></p>
           <p className="kb-muted">Offer deal <code>{dealId}</code> to your transporters. Sequential offers go down the list on timeout; broadcast asks everyone at once.</p>
           <div className="kb-grid-2">
             <Field label="Fare (₹)">
@@ -111,8 +112,8 @@ export default function Transporters() {
             <input className="kb-input" value={timeout} onChange={(e) => setTimeoutSecs(e.target.value)} inputMode="numeric" placeholder="120" style={{ maxWidth: 160 }} />
           </Field>
           {selected.length ? <p className="kb-muted">{selected.length} transporter{selected.length === 1 ? '' : 's'} selected (tick them in the list below).</p> : null}
-          {assign.error ? <ErrorNote>{assign.error instanceof Error ? assign.error.message : 'Could not create the job.'}</ErrorNote> : null}
-          {assign.isSuccess ? <p className="kb-muted">Job offered. Track it on the deal.</p> : null}
+          {assign.error ? <ErrorNote>{msg(assign.error, 'Could not create the job.')}</ErrorNote> : null}
+          {assign.isSuccess ? <p className="kb-muted">Job offered. <a href={`/deal/?id=${encodeURIComponent(dealId)}`}>Track it on the deal →</a></p> : null}
           <Button disabled={assign.isPending} onClick={() => assign.mutate()}>{assign.isPending ? 'Offering…' : 'Offer job'}</Button>
         </Card>
       ) : null}
@@ -130,14 +131,14 @@ export default function Transporters() {
         <Field label="Default fare ₹ (optional)">
           <input className="kb-input" value={inviteFare} onChange={(e) => setInviteFare(e.target.value)} inputMode="numeric" placeholder="e.g. 250" style={{ maxWidth: 160 }} />
         </Field>
-        {invite.error ? <ErrorNote>Could not send the invite. Check the number is registered.</ErrorNote> : null}
+        {invite.error ? <ErrorNote>{msg(invite.error, 'Could not send the invite. Check the number is registered.')}</ErrorNote> : null}
         {invite.isSuccess ? <p className="kb-muted">Invite sent.</p> : null}
         <Button disabled={invite.isPending || !phone.trim() || !name.trim()} onClick={() => invite.mutate()}>{invite.isPending ? 'Inviting…' : 'Invite'}</Button>
       </Card>
 
       <h2 className="kb-card-title">My transporters</h2>
       {list.isLoading ? <Spinner label="Loading…" /> : null}
-      {list.error ? <ErrorNote>Could not load your transporters.</ErrorNote> : null}
+      {list.error ? <ErrorNote>{msg(list.error, 'Could not load your transporters.')}</ErrorNote> : null}
       {list.data && list.data.length === 0 ? <p className="kb-empty">No transporters yet. Invite one above.</p> : null}
       <ul className="kb-list">
         {list.data?.map((t) => (

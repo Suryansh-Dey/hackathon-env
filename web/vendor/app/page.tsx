@@ -1,7 +1,68 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
-import { Badge, Button, Card, Spinner, stars, useApi, useAuth } from '@kabados/ui';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Badge, Button, Card, ErrorNote, Field, Spinner, formatDate, stars, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
+import { msg } from './lib/api';
+
+/** Hazardous-waste authorization (state PCB) — unlocks hazardous categories. */
+function HazardousAuthCard({ authorized, validUntil }: { authorized: boolean; validUntil?: string | null }) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const [no, setNo] = useState('');
+  const [state, setState] = useState('');
+  const [until, setUntil] = useState('');
+  const [tieUp, setTieUp] = useState(false);
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!no.trim() || !state.trim() || !until) throw new Error('Fill the authorization number, state and valid-until date.');
+      const { error } = await api.POST('/v1/vendor/authorizations', {
+        body: {
+          authorization_no: no.trim(),
+          state: state.trim(),
+          // End of the chosen day, so "valid until today" still counts today.
+          valid_until: new Date(`${until}T23:59:59`).toISOString(),
+          via_tie_up: tieUp,
+        },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setNo('');
+      qc.invalidateQueries({ queryKey: ['me'] });
+    },
+  });
+  const expired = !authorized && !!validUntil;
+  return (
+    <Card title="Hazardous-waste authorization">
+      <p>
+        <Badge tone={authorized ? 'good' : expired ? 'hazard' : 'warn'}>
+          {authorized ? 'Authorised' : expired ? 'Expired' : 'Not authorised'}
+        </Badge>{' '}
+        {validUntil ? <span className="kb-muted">valid until {formatDate(validUntil)}</span> : null}
+      </p>
+      <p className="kb-muted">
+        Hazardous categories (batteries, CFL tubes, CRTs…) need a valid State Pollution Control Board authorization{authorized ? '. Add a new one to renew.' : ' before you can quote or buy them.'}
+      </p>
+      <div className="kb-grid-2">
+        <Field label="Authorization number">
+          <input className="kb-input" value={no} onChange={(e) => setNo(e.target.value)} placeholder="e.g. HWM/MH/2026/0142" />
+        </Field>
+        <Field label="State">
+          <input className="kb-input" value={state} onChange={(e) => setState(e.target.value)} placeholder="e.g. MH" />
+        </Field>
+      </div>
+      <Field label="Valid until">
+        <input className="kb-input" type="date" value={until} onChange={(e) => setUntil(e.target.value)} style={{ maxWidth: 200 }} />
+      </Field>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '8px 0', cursor: 'pointer' }}>
+        <input type="checkbox" checked={tieUp} onChange={(e) => setTieUp(e.target.checked)} /> Held via a tie-up with an authorised recycler
+      </label>
+      {save.error ? <ErrorNote>{msg(save.error)}</ErrorNote> : null}
+      {save.isSuccess ? <p className="kb-muted">Authorization saved.</p> : null}
+      <Button disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : 'Save authorization'}</Button>
+    </Card>
+  );
+}
 
 export default function Home() {
   const { token } = useAuth();
@@ -68,6 +129,7 @@ export default function Home() {
       </div>
 
       {me.isLoading ? <Spinner /> : null}
+      {me.error ? <ErrorNote>{msg(me.error)}</ErrorNote> : null}
 
       {v ? (
         <Card>
@@ -118,6 +180,8 @@ export default function Home() {
           </Card>
         </a>
       </div>
+
+      {v ? <HazardousAuthCard authorized={v.hazardous_authorized} validUntil={v.hazardous_valid_until} /> : null}
     </>
   );
 }

@@ -23,3 +23,18 @@ export type NoBodyIdPath = '/v1/deals/{id}/payment-request';
 
 /** The typed rule-set version path; `:simulate` casts to the `:publish` key. */
 export type VersionPath = '/v1/vendor/rule-sets/{id}/versions/{v}:publish';
+
+/**
+ * Human message for a failed call. openapi-fetch hands back the RFC 9457
+ * problem object (`{title, detail, status}`), not an Error, so prefer
+ * `detail`, then `title`, then a thrown Error's message.
+ */
+export function msg(e: unknown, fallback = 'Something went wrong. Try again.'): string {
+  if (e && typeof e === 'object') {
+    const p = e as { detail?: unknown; title?: unknown; errors?: { message?: string; path?: string }[] };
+    const first = Array.isArray(p.errors) && p.errors[0]?.message ? `: ${p.errors[0].message}` : '';
+    if (typeof p.detail === 'string' && p.detail) return p.detail;
+    if (typeof p.title === 'string' && p.title) return `${p.title}${first}`;
+  }
+  return e instanceof Error && e.message ? e.message : fallback;
+}

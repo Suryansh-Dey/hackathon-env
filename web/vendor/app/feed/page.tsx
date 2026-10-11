@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, Card, ErrorNote, Field, Spinner, formatRange, formatWeight, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
-import { qry } from '../lib/api';
+import { msg, qry } from '../lib/api';
 
 const RINGS = [
   { v: '', label: 'Any distance' },
@@ -65,7 +65,7 @@ export default function Feed() {
       </Card>
 
       {feed.isLoading ? <Spinner label="Finding listings…" /> : null}
-      {feed.error ? <ErrorNote>Could not load the feed. Pull to refresh.</ErrorNote> : null}
+      {feed.error ? <ErrorNote>{msg(feed.error, 'Could not load the feed. Pull to refresh.')}</ErrorNote> : null}
       {feed.data && feed.data.length === 0 ? <p className="kb-empty">No matching listings right now. Try widening the distance or clearing filters.</p> : null}
 
       <ul className="kb-list">

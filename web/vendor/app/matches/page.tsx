@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, Card, ErrorNote, Spinner, formatRange, formatWeight, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
+import { msg } from '../lib/api';
 
 function km(distanceM: number): string {
   if (distanceM < 1000) return `${Math.round(distanceM)} m away`;
@@ -47,7 +48,7 @@ export default function Matches() {
       <p className="kb-muted">Listings matched to your rate card. Act during first-look to offer before the wider market sees them.</p>
 
       {matches.isLoading ? <Spinner label="Loading leads…" /> : null}
-      {matches.error ? <ErrorNote>Could not load your matches.</ErrorNote> : null}
+      {matches.error ? <ErrorNote>{msg(matches.error, 'Could not load your matches.')}</ErrorNote> : null}
       {matches.data && matches.data.length === 0 ? <p className="kb-empty">No leads yet. Keep your rate card broad to match more listings.</p> : null}
 
       <ul className="kb-list">

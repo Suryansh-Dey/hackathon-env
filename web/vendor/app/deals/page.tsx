@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, Card, ErrorNote, Spinner, formatDate, formatPaise, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
+import { msg } from '../lib/api';
 
 // `index` is typed as an opaque object in the generated schema; at runtime it
 // carries the deal index key (PLAN deal index), including the id we link with.
@@ -71,7 +72,7 @@ export default function Deals() {
     <>
       <h1 className="kb-h1">Deals</h1>
       {deals.isLoading ? <Spinner label="Loading deals…" /> : null}
-      {deals.error ? <ErrorNote>Could not load your deals.</ErrorNote> : null}
+      {deals.error ? <ErrorNote>{msg(deals.error, 'Could not load your deals.')}</ErrorNote> : null}
       {deals.data && rows.length === 0 ? <p className="kb-empty">No deals yet. Accepted offers turn into deals here.</p> : null}
 
       {open.length ? <><h2 className="kb-card-title">In progress</h2><ul className="kb-list">{open.map(render)}</ul></> : null}

@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, Card, ErrorNote, Field, Spinner, formatDateTime, formatRange, useApi, useAuth } from '@kabados/ui';
 import { useEffect, useState } from 'react';
-import { qry } from '../lib/api';
+import { msg, qry } from '../lib/api';
 
 const STATUSES = ['ALL', 'ACTIVE', 'ACCEPTED', 'REJECTED', 'WITHDRAWN', 'EXPIRED', 'SUPERSEDED'] as const;
 type Filter = (typeof STATUSES)[number];
@@ -55,7 +55,7 @@ export default function Offers() {
       </Card>
 
       {offers.isLoading ? <Spinner label="Loading offers…" /> : null}
-      {offers.error ? <ErrorNote>Could not load your offers.</ErrorNote> : null}
+      {offers.error ? <ErrorNote>{msg(offers.error, 'Could not load your offers.')}</ErrorNote> : null}
       {offers.data && rows.length === 0 ? <p className="kb-empty">No offers in this view.</p> : null}
 
       <ul className="kb-list">
