@@ -116,7 +116,7 @@ pub fn scrub(msg: &str, api_key: &str) -> String {
     let mut out = if api_key.len() >= 8 { msg.replace(api_key, "<redacted>") } else { msg.to_string() };
     while let Some(i) = out.find("key=") {
         let rest = &out[i + 4..];
-        let end = rest.find(|c: char| c == '&' || c == ')' || c == ' ' || c == '"').unwrap_or(rest.len());
+        let end = rest.find(['&', ')', ' ', '"']).unwrap_or(rest.len());
         if rest[..end] == *"<redacted>" {
             break;
         }
