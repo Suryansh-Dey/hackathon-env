@@ -127,6 +127,10 @@ pub struct Offer {
     pub total_high: Paise,
     pub covered_weight_low: Grams,
     pub covered_weight_high: Grams,
+    /// Road distance yard → pickup used for the quote; settlement reuses it so
+    /// the distance deduction can't drift between offer and payment.
+    #[serde(default)]
+    pub distance_m: i64,
     pub valid_until: DateTime<Utc>,
     pub slot: Option<Slot>,
     pub pickup_method: PickupMethod,
